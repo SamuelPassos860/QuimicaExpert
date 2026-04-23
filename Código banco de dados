@@ -1,0 +1,179 @@
+import math
+import json
+#import pubchempy as pcp
+# 1. Tenta carregar a biblioteca do HD, se não existir, inicia com exemplos
+def carregar_biblioteca():
+    try:
+        with open('minha_biblioteca.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {
+            #podemos gerar um mock de dados caso nao carregar a lib
+            '61-73-4': {'nome': 'Azul de Metileno', 'coeficiente_molar': 80000, 'nm': 664},
+            '77-09-8': {'nome': 'Fenolftaleína', 'coeficiente_molar': 25000, 'nm': 552}
+        }
+
+compostos_db = carregar_biblioteca()
+
+# 2. Funções de Suporte (As ferramentas)
+# banco de dados futuramente
+def salvar_biblioteca():
+    with open('minha_biblioteca.json', 'w') as f:
+        json.dump(compostos_db, f, indent=4)
+
+#CAS = indentificador unico de reagentes quimicos
+def adicionar_via_cas(cas_id):
+    try:
+        results = pcp.get_compounds(cas_id, 'name')
+        if results:
+            composto = results[0]
+            nome_oficial = composto.synonyms[0]
+            print(f"\n[PubChem] Composto encontrado: {nome_oficial}")
+
+
+            #PRINCIPAL PROBLEMA é EPS = Coeficiente de extinsao molar
+            coeficiente_absorção_molar = float(input(f"Insira o ε para {nome_oficial}: "))
+            nm = float(input(f"Insira o comprimento de onda (λmax) para {nome_oficial} em nm: "))
+
+
+            #nm = é variavel de comprimento de onde
+            compostos_db[cas_id] = {
+                'nome': nome_oficial,
+                'coeficiente_molar': coeficiente_absorção_molar,
+                'nm': nm
+            }
+            salvar_biblioteca()
+            return True
+        return False
+    except Exception:
+        print("Erro ao conectar com a base do PhotochemCAD.")
+        return False
+
+def iniciar_curva_calibracao():
+    print("\n--- MODO: CURVA DE CALIBRAÇÃO (y = mx + b) ---")
+    m = float(input('Inclinação da curva (m): '))
+    b = float(input('Intersecção da curva (b): '))
+    abs_lida = float(input('Absorbância lida na amostra: '))
+    # x = (y - b) / m
+    concentracao = (abs_lida - b) / m
+    return f"Resultado via Curva: Concentração = {concentracao:.4f} mol/L"
+#extração de arquivo
+
+# 3. Lógica Principal
+def processo_analitico():
+    print("=== SOFTWARE ANALÍTICO - QUÍMICA EXPERTA ===")
+
+    # Caminho óptico é quase sempre 1.0, facilitamos para o usuário
+    c_optico = input('Caminho óptico (cm) [Padrão 1.0]: ')
+    caminho_optico = float(c_optico) if c_optico else 1.0
+
+    cas_usuario = input("Digite o número CAS (ou Enter para Curva de Calibração): ").strip()
+
+    if cas_usuario in compostos_db:
+        dados = compostos_db[cas_usuario]
+        print(f"Usando dados de: {dados['nome']}")
+        conc = float(input(f"Insira a concentração de {dados['nome']} (mol/L): "))
+        #lei de beer
+        absorbancia = dados['coeficiente_molar'] * caminho_optico * conc
+        return f"Absorbância Calculada (Beer-Lambert): {absorbancia:.4f}"
+
+    elif cas_usuario != "":
+        print("CAS não encontrado no banco local.")
+        opcao = input("1. Buscar no PubChem / 2. Cadastrar Manual / 3. Ir para Curva: ")
+
+        if opcao == '1':
+            if adicionar_via_cas(cas_usuario):
+                print("Composto salvo! Reinicie para calcular.")
+            return "Operação de cadastro finalizada."
+        elif opcao == '2':
+            nome = input("Nome do composto: ")
+            coeficiente_absorção_molar = input("Coeficiente (ε): ").replace(',','.')
+            nm = float(input("Comprimento de onda (nm): "))
+            compostos_db[cas_usuario] = {'nome': nome, 'coeficiente_molar': coeficiente_absorção_molar, 'nm': nm}
+            salvar_biblioteca()
+            return "Composto cadastrado manualmente."
+
+
+    # Se caiu aqui, vai para a curva
+    return iniciar_curva_calibracao()
+
+# 4. EXECUÇÃO
+if __name__ == "__main__":
+    resultado = processo_analitico()
+    print("\n" + "="*40)
+    print(resultado)
+    print("="*40)def salvar_biblioteca():
+    with open('minha_biblioteca.json', 'w') as f:
+        json.dump(compostos_db, f, indent=4)
+
+#CAS = indentificador unico de reagentes quimicos
+def adicionar_via_cas(cas_id):
+    try:
+        results = pcp.get_compounds(cas_id, 'name')
+        if results:
+            composto = results[0]
+            nome_oficial = composto.synonyms[0]
+            print(f"\n[PubChem] Composto encontrado: {nome_oficial}")
+
+
+            #PRINCIPAL PROBLEMA é EPS = Coeficiente de extinsao molar
+            coeficiente_absorção_molar = float(input(f"Insira o ε para {nome_oficial}: "))
+            nm = float(input(f"Insira o comprimento de onda (λmax) para {nome_oficial} em nm: "))
+
+
+            #nm = é variavel de comprimento de onde
+            compostos_db[cas_id] = {
+                'nome': nome_oficial,
+                'coeficiente_molar': coeficiente_absorção_molar,
+                'nm': nm
+            }
+            salvar_biblioteca()
+            return True
+        return False
+    except Exception:
+        print("Erro ao conectar com a base do PhotochemCAD.")
+        return False
+
+def iniciar_curva_calibracao():
+    print("\n--- MODO: CURVA DE CALIBRAÇÃO (y = mx + b) ---")
+    m = float(input('Inclinação da curva (m): '))
+    b = float(input('Intersecção da curva (b): '))
+    abs_lida = float(input('Absorbância lida na amostra: '))
+    # x = (y - b) / m
+    concentracao = (abs_lida - b) / m
+    return f"Resultado via Curva: Concentração = {concentracao:.4f} mol/L"
+def extrair_arquivos()
+
+# 3. Lógica Principal
+def processo_analitico():
+    print("=== SOFTWARE ANALÍTICO - QUÍMICA EXPERTA ===")
+
+    # Caminho óptico é quase sempre 1.0, facilitamos para o usuário
+    c_optico = input('Caminho óptico (cm) [Padrão 1.0]: ')
+    caminho_optico = float(c_optico) if c_optico else 1.0
+
+    cas_usuario = input("Digite o número CAS (ou Enter para Curva de Calibração): ").strip()
+
+    if cas_usuario in compostos_db:
+        dados = compostos_db[cas_usuario]
+        print(f"Usando dados de: {dados['nome']}")
+        conc = float(input(f"Insira a concentração de {dados['nome']} (mol/L): "))
+        #lei de beer
+        absorbancia = dados['coeficiente_molar'] * caminho_optico * conc
+        return f"Absorbância Calculada (Beer-Lambert): {absorbancia:.4f}"
+
+    elif cas_usuario != "":
+        print("CAS não encontrado no banco local.")
+        opcao = input("1. Buscar no PubChem / 2. Cadastrar Manual / 3. Ir para Curva: ")
+
+        if opcao == '1':
+            if adicionar_via_cas(cas_usuario):
+                print("Composto salvo! Reinicie para calcular.")
+            return "Operação de cadastro finalizada."
+        elif opcao == '2':
+            nome = input("Nome do composto: ")
+            coeficiente_absorção_molar = float(input("Coeficiente (ε): "))
+            nm = float(input("Comprimento de onda (nm): "))
+            compostos_db[cas_usuario] = {'nome': nome, 'coeficiente_molar': coeficiente_absorção_molar, 'nm': nm}
+            salvar_biblioteca()
+            return "Composto cadastrado manualmente."
