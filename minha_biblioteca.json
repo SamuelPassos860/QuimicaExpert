@@ -1,0 +1,44 @@
+{
+    "61-73-4": {
+        "nome": "Azul de Metileno",
+        "coeficiente_molar": 80000,
+        "nm": 664,
+        "origem": "Padrao"
+    },
+    "77-09-8": {
+        "nome": "Fenolftale\u00edna",
+        "coeficiente_molar": 25000,
+        "nm": 552,
+        "origem": "Padrao"
+    },
+    "98-86-2": {
+        "nome": "A15_98-86-2_Acetophenone",
+        "coeficiente_molar": 241.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "108-88-3": {
+        "nome": "Toluene",
+        "coeficiente_molar": 261.75,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "95-47-6": {
+        "nome": "o-Xylene",
+        "coeficiente_molar": 254.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "108-95-2": {
+        "nome": "Phenol",
+        "coeficiente_molar": 558.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "108-90-7": {
+        "nome": "Chlorobenzene",
+        "coeficiente_molar": 265.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    }
+}
