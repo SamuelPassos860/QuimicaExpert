@@ -40,5 +40,77 @@
         "coeficiente_molar": 265.0,
         "nm": "N/A",
         "origem": "PhotochemCAD"
+    },
+    "100-42-5": {
+        "nome": "A22_100-42-5_Styrene.str.tif",
+        "coeficiente_molar": 14700.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "98-95-3": {
+        "nome": "A21_98-95-3_Nitrobenzene.str.tif",
+        "coeficiente_molar": 258.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "536-74-3": {
+        "nome": "Phenylacetylene",
+        "coeficiente_molar": 236.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "528-21-2": {
+        "nome": "Gallacetophenone",
+        "coeficiente_molar": 291.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "27_121-33": {
+        "nome": "Vanillin",
+        "coeficiente_molar": 9770.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "106-50-3": {
+        "nome": "p-Phenylenediamine",
+        "coeficiente_molar": 8453.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "119-61-9": {
+        "nome": "Benzophenone",
+        "coeficiente_molar": 19400.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "120-12-7": {
+        "nome": "Anthracene",
+        "coeficiente_molar": 9700.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "18531-94-7": {
+        "nome": "(R)-BINOL",
+        "coeficiente_molar": 8590.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "129-00-0": {
+        "nome": "Pyrene",
+        "coeficiente_molar": 81700.0,
+        "nm": "N/A",
+        "origem": "PhotochemCAD"
+    },
+    "85-01-8": {
+        "nome": "Phenanthrene",
+        "coeficiente_molar": 69200.0,
+        "nm": 2017.0,
+        "origem": "PhotochemCAD"
+    },
+    "517-51-1": {
+        "nome": "Rubrene",
+        "coeficiente_molar": 123000.0,
+        "nm": 303.0,
+        "origem": "PhotochemCAD"
     }
 }

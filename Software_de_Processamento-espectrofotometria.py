@@ -45,6 +45,22 @@ def adicionar_via_cas(cas_id):
         print(f"Erro Conexão: {e}")
         return False
 
+def limpar_valor_quimico(texto):
+    # Remove aspas e espaços extras
+    t = texto.strip().replace('"', '')
+    
+    # Se o valor tem ponto e vírgula (ex: 1.250,00)
+    if '.' in t and ',' in t:
+        t = t.replace('.', '').replace(',', '.')
+    # Se tem apenas vírgula (ex: 1250,00)
+    elif ',' in t:
+        t = t.replace(',', '.')
+    
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
 def carregar_database(caminho_db):
     database_epsilon = {}
     if not os.path.exists(caminho_db):
@@ -54,18 +70,39 @@ def carregar_database(caminho_db):
         for linha in f:
             partes = [p.strip() for p in linha.split() if p.strip()]
 
-# Se a linha tem os dados, o nome do arquivo (ex: A01...) 
-# costuma estar na posição partes[1] ou partes[2]
-            if len(partes) >= 7:
-                try:    
-                     # Vamos procurar em qual coluna está o texto que termina com '.txt'
-# Se não achar, tentamos a coluna 1 (segunda coluna)
-                    nome_composto = partes[1]
-                    # O Epsilon (ε) no seu arquivo está na coluna 6 (índice 6)
-                    valor_raw = partes[6].replace('"', '').replace(',', '')
-                    database_epsilon[nome_composto] = float(valor_raw)
-                except:
-                    continue 
+            if len(partes) > 10:
+                try:
+                    nome_composto = partes[1].replace('"', '')
+                    
+                    # Criamos uma lista de números já limpos
+                    numeros = []
+                    for p in partes:
+                        v = limpar_valor_quimico(p)
+                        if v is not None:
+                            numeros.append(v)
+                    
+                    if len(numeros) >= 2:
+                        epsilon_max = max(numeros)
+                        idx_eps = numeros.index(epsilon_max)
+                        
+                        # Vamos procurar o nm correto:
+                        # Ele deve ser um número que esteja ANTES do epsilon 
+                        # E que esteja na faixa razoável de UV-Vis (ex: 200 a 1000)
+                        nm_candidato = "N/A"
+                        
+                        # Varre os números de trás para frente a partir do Epsilon
+                        for i in range(idx_eps - 1, -1, -1):
+                            num_atual = numeros[i]
+                            if 200 <= num_atual <= 1000:
+                                nm_candidato = num_atual
+                                break # Achou o primeiro número que faz sentido como nm
+                        
+                        database_epsilon[nome_composto] = {
+                            'coeficiente_molar': epsilon_max,
+                            'nm': nm_candidato
+                        }
+                except Exception:
+                    continue
     return database_epsilon
 
 meu_dicionario = carregar_database('Common Compounds DB.db')
@@ -96,17 +133,16 @@ def processo_analitico():
             print(f"✅ Encontrado na Biblioteca Local: {nome_exibicao}")
             break
 
-    # --- BUSCA NA DATABASE EXTERNA ---
+   # --- BUSCA NA DATABASE EXTERNA ---
     if eps is None:
-        for chave_nome in meu_dicionario.keys():
-            partes_arq = chave_nome.split('_')
-            if (len(partes_arq) > 1 and entrada_busca == partes_arq[1]) or (busca_lower in chave_nome.lower()):
-                eps = meu_dicionario[chave_nome]
+        for chave_nome, dados in meu_dicionario.items():
+            if busca_lower in chave_nome.lower():
+                eps = dados['coeficiente_molar']
+                nm_encontrado = dados['nm'] # Pegamos o nm aqui!
                 nome_exibicao = chave_nome.replace('.abs.txt', '')
                 origem_detectada = "PhotochemCAD"
-                print(f"✅ Encontrado na Database: {nome_exibicao}")
+                print(f"✅ Encontrado na Database: {nome_exibicao} (λmax: {nm_encontrado} nm)")
                 break
-
     # --- SE NÃO ACHOU, PEDE MANUAL ---
     if eps is None:
         print("⚠️ Composto não localizado.")
@@ -128,19 +164,22 @@ def processo_analitico():
     print(f"\nAbsorbância Calculada: {absorbancia:.4f}")
     
     # Se o composto NÃO veio da biblioteca local, oferece para salvar
+    # Procure esta parte no final do processo_analitico:
     if origem_detectada != "Biblioteca Local":
-        confirmar = input(f"\n⭐ Deseja salvar '{nome_exibicao}' na sua biblioteca permanente? (s/n): ").strip().lower()
+        confirmar = input(f"\n⭐ Deseja salvar '{nome_exibicao}'? (s/n): ").strip().lower()
         if confirmar == 's':
-            cas_id = input("Digite o CAS para registro: ").strip() or "S/CAS"
+            cas_id = input("Digite o CAS: ").strip() or "S/CAS"
+            
+            # Tenta usar o nm_encontrado, se não existir usa 'N/A'
+            nm_para_biblioteca = nm_encontrado if 'nm_encontrado' in locals() else 'N/A'
+            
             compostos_db[cas_id] = {
                 'nome': nome_exibicao,
                 'coeficiente_molar': eps,
-                'nm': 'N/A', 
+                'nm': nm_para_biblioteca, # AGORA ELE SALVA O VALOR REAL
                 'origem': origem_detectada
             }
             salvar_biblioteca()
-            print(f"💾 '{nome_exibicao}' foi adicionado ao seu dicionário!")
-
     # Retorna o relatório final
     return (f"\n--- RELATÓRIO FINAL ---\n"
             f"Composto: {nome_exibicao}\n"
@@ -151,7 +190,6 @@ def mostrar_biblioteca_salva():
     print("\n" + "="*75)
     print(f"{'CAS':<15} | {'Nome':<25} | {'ε (M⁻¹cm⁻¹)':<12} | {'λmax':<8} | {'Fonte'}")
     print("-" * 75)
-    print('Cheguei no meu dicionario.com.br')
     for cas, info in compostos_db.items():
         origem = info.get('origem', 'N/A')
         print(f"{cas:<15} | {info['nome'][:25]:<25} | {info['coeficiente_molar']:<12} | {info['nm']:<8} | {origem}")
