@@ -68,41 +68,80 @@ def carregar_database(caminho_db):
 
     with open(caminho_db, 'r', encoding='utf-8', errors='ignore') as f:
         for linha in f:
-            partes = [p.strip() for p in linha.split() if p.strip()]
+            # Forçamos a limpeza de espaços extras e tabs
+            partes = [p.strip() for p in linha.replace('\t', ' ').split(' ') if p.strip()]
 
-            if len(partes) > 10:
+            if len(partes) >= 6:
                 try:
+                    # O nome geralmente está na segunda posição
                     nome_composto = partes[1].replace('"', '')
                     
-                    # Criamos uma lista de números já limpos
-                    numeros = []
-                    for p in partes:
-                        v = limpar_valor_quimico(p)
-                        if v is not None:
-                            numeros.append(v)
+                    # 1. PEGAR TODOS OS NÚMEROS NA ORDEM EM QUE APARECEM
+                    valores_encontrados = []
+                    indices_originais = []
                     
-                    if len(numeros) >= 2:
-                        epsilon_max = max(numeros)
-                        idx_eps = numeros.index(epsilon_max)
-                        
-                        # Vamos procurar o nm correto:
-                        # Ele deve ser um número que esteja ANTES do epsilon 
-                        # E que esteja na faixa razoável de UV-Vis (ex: 200 a 1000)
-                        nm_candidato = "N/A"
-                        
-                        # Varre os números de trás para frente a partir do Epsilon
-                        for i in range(idx_eps - 1, -1, -1):
-                            num_atual = numeros[i]
-                            if 200 <= num_atual <= 1000:
-                                nm_candidato = num_atual
-                                break # Achou o primeiro número que faz sentido como nm
-                        
-                        database_epsilon[nome_composto] = {
-                            'coeficiente_molar': epsilon_max,
-                            'nm': nm_candidato
-                        }
-                except Exception:
+                    for i, p in enumerate(partes):
+                        v = limpar_valor_quimico(p)
+                        if v is not None and 0 < v < 1000000:
+                            valores_encontrados.append(v)
+                            indices_originais.append(i)
+                    
+                    if len(valores_encontrados) < 1:
+                        continue
+
+                    # --- LÓGICA DE ATRIBUIÇÃO POR EXCLUSÃO ---
+                    epsilon_final = 0
+                    nm_final = "N/A"
+                    
+                    # Se houver parênteses na linha, o valor dentro dele TEM que ser o NM
+                    valor_parenteses = None
+                    for p in partes:
+                        if "(" in p:
+                            limpo = "".join(c for c in p if c.isdigit() or c == '.')
+                            if limpo: valor_parenteses = float(limpo)
+
+                    if valor_parenteses:
+                        nm_final = valor_parenteses
+                        # O Epsilon será o maior valor que não seja o do parênteses
+                        restantes = [v for v in valores_encontrados if abs(v - nm_final) > 0.1]
+                        epsilon_final = max(restantes) if restantes else nm_final
+                    else:
+                        # Se não tem parênteses, o Epsilon é quase sempre o PRIMEIRO número grande
+                        # ou simplesmente o maior valor da linha
+                        epsilon_final = max(valores_encontrados)
+                        # O NM é o valor que está na faixa UV (200-900) e não é o Epsilon
+                        for v in valores_encontrados:
+                            if 200 <= v <= 900 and v != epsilon_final:
+                                nm_final = v
+                                break
+
+                    # --- LÓGICA DO SOLVENTE (Puxar texto após o Epsilon) ---
+                    solvente = "N/A"
+                    # Localizar a posição do Epsilon nas partes originais
+                    idx_pos_eps = -1
+                    for i in indices_originais:
+                        if limpar_valor_quimico(partes[i]) == epsilon_final:
+                            idx_pos_eps = i
+                            break
+                    
+                    if idx_pos_eps != -1 and idx_pos_eps + 1 < len(partes):
+                        # Procuramos a primeira palavra real após o Epsilon
+                        for k in range(idx_pos_eps + 1, len(partes)):
+                            candidato = partes[k].replace('(', '').replace(')', '').replace('"', '')
+                            if not limpar_valor_quimico(candidato) and len(candidato) > 2:
+                                if not any(x in candidato.lower() for x in ["agilent", "202", "jan"]):
+                                    solvente = candidato
+                                    break
+
+                    database_epsilon[nome_composto] = {
+                        'coeficiente_molar': epsilon_final,
+                        'nm': nm_final,
+                        'solvente': solvente
+                    }
+
+                except:
                     continue
+                    
     return database_epsilon
 
 meu_dicionario = carregar_database('Common Compounds DB.db')
@@ -135,13 +174,18 @@ def processo_analitico():
 
    # --- BUSCA NA DATABASE EXTERNA ---
     if eps is None:
-        for chave_nome, dados in meu_dicionario.items():
-            if busca_lower in chave_nome.lower():
+        for nome_db, dados in meu_dicionario.items():
+            # Dentro do loop de busca na database externa:
+            if busca_lower in nome_db.lower():
                 eps = dados['coeficiente_molar']
-                nm_encontrado = dados['nm'] # Pegamos o nm aqui!
-                nome_exibicao = chave_nome.replace('.abs.txt', '')
+                nm_encontrado = dados['nm']
+                solvente_encontrado = dados['solvente'] # Puxa o valor limpo da DB
+                
+                nome_exibicao = nome_db.split('_')[-1].replace('.abs.txt', '')
                 origem_detectada = "PhotochemCAD"
-                print(f"✅ Encontrado na Database: {nome_exibicao} (λmax: {nm_encontrado} nm)")
+                
+                print(f"✅ Encontrado: {nome_exibicao}")
+                print(f"   λmax: {nm_encontrado} nm | Solvente: {solvente_encontrado}")
                 break
     # --- SE NÃO ACHOU, PEDE MANUAL ---
     if eps is None:
@@ -169,17 +213,15 @@ def processo_analitico():
         confirmar = input(f"\n⭐ Deseja salvar '{nome_exibicao}'? (s/n): ").strip().lower()
         if confirmar == 's':
             cas_id = input("Digite o CAS: ").strip() or "S/CAS"
-            
-            # Tenta usar o nm_encontrado, se não existir usa 'N/A'
-            nm_para_biblioteca = nm_encontrado if 'nm_encontrado' in locals() else 'N/A'
-            
             compostos_db[cas_id] = {
                 'nome': nome_exibicao,
                 'coeficiente_molar': eps,
-                'nm': nm_para_biblioteca, # AGORA ELE SALVA O VALOR REAL
+                'nm': nm_encontrado if 'nm_encontrado' in locals() else 'N/A',
+                'solvente': solvente_encontrado if 'solvente_encontrado' in locals() else 'Manual',
                 'origem': origem_detectada
             }
             salvar_biblioteca()
+            print("💾 Salvo com sucesso!")
     # Retorna o relatório final
     return (f"\n--- RELATÓRIO FINAL ---\n"
             f"Composto: {nome_exibicao}\n"
@@ -187,13 +229,22 @@ def processo_analitico():
             f"Absorbância: {absorbancia:.4f}")
 
 def mostrar_biblioteca_salva():
-    print("\n" + "="*75)
-    print(f"{'CAS':<15} | {'Nome':<25} | {'ε (M⁻¹cm⁻¹)':<12} | {'λmax':<8} | {'Fonte'}")
-    print("-" * 75)
+    # Aumentamos para 105 caracteres para caber a nova coluna
+    print("\n" + "="*105)
+    print(f"{'CAS':<15} | {'Nome':<25} | {'ε (M⁻¹cm⁻¹)':<12} | {'λmax':<8} | {'Solvente':<15} | {'Fonte'}")
+    print("-" * 105)
+    
     for cas, info in compostos_db.items():
-        origem = info.get('origem', 'N/A')
-        print(f"{cas:<15} | {info['nome'][:25]:<25} | {info['coeficiente_molar']:<12} | {info['nm']:<8} | {origem}")
-    print("="*75 + "\n")
+        # Usamos .get() para evitar erro se algum item antigo não tiver solvente/nm
+        nome = info.get('nome', 'N/A')
+        eps = info.get('coeficiente_molar', 0)
+        nm = info.get('nm', 'N/A')
+        solv = info.get('solvente', 'N/A')
+        fonte = info.get('origem', 'N/A')
+        
+        print(f"{cas:<15} | {nome[:25]:<25} | {eps:<12} | {nm:<8} | {solv:<15} | {fonte}")
+    
+    print("="*105 + "\n")
 
 if __name__ == "__main__":
     mostrar_biblioteca_salva()

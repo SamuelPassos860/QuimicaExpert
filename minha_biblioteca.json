@@ -112,5 +112,74 @@
         "coeficiente_molar": 123000.0,
         "nm": 303.0,
         "origem": "PhotochemCAD"
+    },
+    "73-40-5": {
+        "nome": "Guanine",
+        "coeficiente_molar": 10700.0,
+        "nm": 243.0,
+        "origem": "PhotochemCAD"
+    },
+    "65-71-4": {
+        "nome": "Thymine",
+        "coeficiente_molar": 7900.0,
+        "nm": 263.75,
+        "solvente": "(264.5",
+        "origem": "PhotochemCAD"
+    },
+    "66-22-8": {
+        "nome": "Uracil",
+        "coeficiente_molar": 8200.0,
+        "nm": 258.25,
+        "solvente": "(259.5",
+        "origem": "PhotochemCAD"
+    },
+    "83-88-5": {
+        "nome": "Riboflavin",
+        "coeficiente_molar": 33000.0,
+        "nm": 263.0,
+        "solvente": "(270",
+        "origem": "PhotochemCAD"
+    },
+    "123-31-9": {
+        "nome": "Hydroquinone",
+        "coeficiente_molar": 17000.0,
+        "nm": 225.0,
+        "solvente": "(225",
+        "origem": "PhotochemCAD"
+    },
+    "87-87-6": {
+        "nome": "Tetrachlorohydroquinone",
+        "coeficiente_molar": 211.0,
+        "nm": 3.990021166003102e+40,
+        "solvente": "acetonitrile",
+        "origem": "PhotochemCAD"
+    },
+    "72-48-0": {
+        "nome": "Alizarin Red S",
+        "coeficiente_molar": 250.0,
+        "nm": 250.0,
+        "solvente": "ethanol",
+        "origem": "PhotochemCAD"
+    },
+    "91-64-5": {
+        "nome": "Coumarin",
+        "coeficiente_molar": 275.0,
+        "nm": "N/A",
+        "solvente": "ethanol",
+        "origem": "PhotochemCAD"
+    },
+    "92-82-0": {
+        "nome": "Phenazine",
+        "coeficiente_molar": 248.0,
+        "nm": "N/A",
+        "solvente": "ethanol",
+        "origem": "PhotochemCAD"
+    },
+    "262-20-4": {
+        "nome": "Phenoxathiin",
+        "coeficiente_molar": 28500.0,
+        "nm": 238.0,
+        "solvente": "ethanol",
+        "origem": "PhotochemCAD"
     }
 }
