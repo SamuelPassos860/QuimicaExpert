@@ -107,47 +107,37 @@ def limpar_valor_quimico(texto):
         return None
 
 
-def carregar_database(caminho_db):
+def carregar_database():
     database_epsilon = {}
 
-    if not os.path.exists(caminho_db):
-        return database_epsilon
+    with conectar_banco() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    compound_name,
+                    absorption_wavelength_nm,
+                    molar_extinction_coefficient
+                FROM spectral_data
+                WHERE compound_name IS NOT NULL
+                  AND molar_extinction_coefficient IS NOT NULL;
+            """)
 
-    with open(caminho_db, 'r', encoding='utf-8', errors='ignore') as f:
-        for linha in f:
-            partes = [p.strip() for p in linha.split() if p.strip()]
+            rows = cur.fetchall()
 
-            if len(partes) > 10:
-                try:
-                    nome_composto = partes[1].replace('"', '')
+    for row in rows:
+        nome = row["compound_name"]
+        epsilon_raw = row["molar_extinction_coefficient"]
+        wavelength = row["absorption_wavelength_nm"]
 
-                    numeros = []
-                    for p in partes:
-                        v = limpar_valor_quimico(p)
-                        if v is not None:
-                            numeros.append(v)
+        epsilon = limpar_valor_quimico(str(epsilon_raw))
 
-                    if len(numeros) >= 2:
-                        epsilon_max = max(numeros)
-                        idx_eps = numeros.index(epsilon_max)
-
-                        nm_candidato = "N/A"
-
-                        for i in range(idx_eps - 1, -1, -1):
-                            num_atual = numeros[i]
-                            if 200 <= num_atual <= 1000:
-                                nm_candidato = num_atual
-                                break
-
-                        database_epsilon[nome_composto] = {
-                            'coeficiente_molar': epsilon_max,
-                            'nm': nm_candidato
-                        }
-                except Exception:
-                    continue
+        if epsilon is not None:
+            database_epsilon[nome] = {
+                "coeficiente_molar": epsilon,
+                "nm": str(wavelength) if wavelength is not None else "N/A"
+            }
 
     return database_epsilon
-
 
 def processo_analitico():
     print("=== SOFTWARE ANALÍTICO - QUÍMICA EXPERTA ===")
@@ -252,7 +242,7 @@ if __name__ == "__main__":
     garantir_dados_padrao()
 
     compostos_db = carregar_biblioteca()
-    meu_dicionario = carregar_database('Common Compounds DB.db')
+    meu_dicionario = carregar_database()
 
     print(f"DEBUG: Foram carregados {len(meu_dicionario)} compostos da database.")
     print("--- PRIMEIRAS 5 CHAVES DA DATABASE ---")
