@@ -1,254 +1,316 @@
+Po_Mosca
+po_mosca
+Compartilhando tela
+
+Po_Mosca — 24/04/2026 23:37
+agora está puxando certo
+e to indo nessa pq a muie ta aqui ja KKKK ta esperando eu terminar
+Amanhã eu organizo o código, pra separar por partes, pra ficar melhor pra gnt
+agora que ta tudo certo
+Se não entender oq eu falei aqui, manda mensagem por aqui que consigo responder no cel
+Virtus — 25/04/2026 01:30
+postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y.sa-east-1.aws.neon.tech/neondb?sslmode=require
+Virtus — 25/04/2026 02:43
+psql "postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" -f insert_spectral_measurements.sql
+Virtus — 25/04/2026 03:17
+export DATABASE_URL="postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" 
+Virtus — 25/04/2026 04:10
+amanha ou domingas falamos mais
+fiz umas alteraçoes
+Po_Mosca — 18:18
+To esperando chamarem, parece que deu pau la no teams KKKKK começou bem já
+Virtus — 18:18
+kkkkkkkkk
+dboa
+to trampando ainda
+Po_Mosca — 18:21
+taporra
+Virtus — 18:29
+teste
+deu ai
+conseguiu entra
+Po_Mosca — 18:29
+Tl esperando a mulher dar sinal de vida
+guenta ai uns 20 min
+vai que ela consegue lá e a gnt ta na call
+Virtus — 18:30
+dboa
+Po_Mosca
+ iniciou uma chamada que durou 19 minutos. — 18:45
+Virtus — 19:04
+teste
+Virtus
+ iniciou uma chamada. — 19:04
+Virtus — 19:24
 import math
-import json
 import zipfile
 import os
 import ssl
 import re
+import psycopg2
+
+message.txt
+9 KB
+﻿
+import math
+import zipfile
+import os
+import ssl
+import re
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# 1. Carregar Biblioteca Local
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def conectar_banco():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL não configurada.")
+    return psycopg2.connect(DATABASE_URL)
+
+
+def salvar_composto_banco(cas_id, nome, epsilon, lambda_max, fonte):
+    with conectar_banco() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO compounds (
+                    cas,
+                    nome,
+                    epsilon_m_cm,
+                    lambda_max,
+                    fonte
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (cas)
+                DO UPDATE SET
+                    nome = EXCLUDED.nome,
+                    epsilon_m_cm = EXCLUDED.epsilon_m_cm,
+                    lambda_max = EXCLUDED.lambda_max,
+                    fonte = EXCLUDED.fonte;
+            """, (
+                cas_id,
+                nome,
+                epsilon,
+                str(lambda_max) if lambda_max is not None else "N/A",
+                fonte
+            ))
+
+
 def carregar_biblioteca():
-    try:
-        with open('minha_biblioteca.json', 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            '61-73-4': {'nome': 'Azul de Metileno', 'coeficiente_molar': 80000, 'nm': 664, 'origem': 'Padrao'},
-            '77-09-8': {'nome': 'Fenolftaleína', 'coeficiente_molar': 25000, 'nm': 552, 'origem': 'Padrao'}
+    compostos = {}
+
+    with conectar_banco() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT cas, nome, epsilon_m_cm, lambda_max, fonte
+                FROM compounds
+                ORDER BY nome;
+            """)
+            rows = cur.fetchall()
+
+    for row in rows:
+        compostos[row["cas"]] = {
+            "nome": row["nome"],
+            "coeficiente_molar": float(row["epsilon_m_cm"]) if row["epsilon_m_cm"] is not None else 0.0,
+            "nm": row["lambda_max"] or "N/A",
+            "origem": row["fonte"] or "N/A"
         }
 
-compostos_db = carregar_biblioteca()
+    return compostos
 
-# 2. Funções de Suporte
-def salvar_biblioteca():
-    with open('minha_biblioteca.json', 'w') as f:
-        json.dump(compostos_db, f, indent=4)
+
+def garantir_dados_padrao():
+    salvar_composto_banco("61-73-4", "Azul de Metileno", 80000, "664", "Padrao")
+    salvar_composto_banco("77-09-8", "Fenolftaleína", 25000, "552", "Padrao")
 
 
 def adicionar_via_cas(cas_id):
     try:
-            print("--- Cadastro Manual ---")
-            nome_manual = input("Nome do composto: ")
-            eps_manual = float(input("ε (M⁻¹cm⁻¹): "))
-            nm_manual = float(input("λmax (nm): "))
-            
-            compostos_db[cas_id] = {
-                'nome': nome_manual,
-                'coeficiente_molar': eps_manual,
-                'nm': nm_manual,
-                'origem': 'Manual'
-            }
-            salvar_biblioteca()
-            return True
+        print("--- Cadastro Manual ---")
+        nome_manual = input("Nome do composto: ")
+        eps_manual = float(input("ε (M⁻¹cm⁻¹): "))
+        nm_manual = input("λmax (nm): ").strip() or "N/A"
+
+        salvar_composto_banco(
+            cas_id=cas_id,
+            nome=nome_manual,
+            epsilon=eps_manual,
+            lambda_max=nm_manual,
+            fonte="Manual"
+        )
+
+        return True
     except Exception as e:
-        print(f"Erro Conexão: {e}")
+        print(f"Erro ao salvar no banco: {e}")
         return False
 
+
 def limpar_valor_quimico(texto):
-    # Remove aspas e espaços extras
     t = texto.strip().replace('"', '')
-    
-    # Se o valor tem ponto e vírgula (ex: 1.250,00)
+
     if '.' in t and ',' in t:
         t = t.replace('.', '').replace(',', '.')
-    # Se tem apenas vírgula (ex: 1250,00)
     elif ',' in t:
         t = t.replace(',', '.')
-    
+
     try:
         return float(t)
     except ValueError:
         return None
 
-def carregar_database(caminho_db):
+
+def carregar_database():
     database_epsilon = {}
-    if not os.path.exists(caminho_db):
-        return database_epsilon
 
-    with open(caminho_db, 'r', encoding='utf-8', errors='ignore') as f:
-        for linha in f:
-            # Forçamos a limpeza de espaços extras e tabs
-            partes = [p.strip() for p in linha.replace('\t', ' ').split(' ') if p.strip()]
+    with conectar_banco() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    compound_name,
+                    absorption_wavelength_nm,
+                    molar_extinction_coefficient
+                FROM spectral_data
+                WHERE compound_name IS NOT NULL
+                  AND molar_extinction_coefficient IS NOT NULL;
+            """)
 
-            if len(partes) >= 6:
-                try:
-                    # O nome geralmente está na segunda posição
-                    nome_composto = partes[1].replace('"', '')
-                    
-                    # 1. PEGAR TODOS OS NÚMEROS NA ORDEM EM QUE APARECEM
-                    valores_encontrados = []
-                    indices_originais = []
-                    
-                    for i, p in enumerate(partes):
-                        v = limpar_valor_quimico(p)
-                        if v is not None and 0 < v < 1000000:
-                            valores_encontrados.append(v)
-                            indices_originais.append(i)
-                    
-                    if len(valores_encontrados) < 1:
-                        continue
+            rows = cur.fetchall()
 
-                    # --- LÓGICA DE ATRIBUIÇÃO POR EXCLUSÃO ---
-                    epsilon_final = 0
-                    nm_final = "N/A"
-                    
-                    # Se houver parênteses na linha, o valor dentro dele TEM que ser o NM
-                    valor_parenteses = None
-                    for p in partes:
-                        if "(" in p:
-                            limpo = "".join(c for c in p if c.isdigit() or c == '.')
-                            if limpo: valor_parenteses = float(limpo)
+    for row in rows:
+        nome = row["compound_name"]
+        epsilon_raw = row["molar_extinction_coefficient"]
+        wavelength = row["absorption_wavelength_nm"]
 
-                    if valor_parenteses:
-                        nm_final = valor_parenteses
-                        # O Epsilon será o maior valor que não seja o do parênteses
-                        restantes = [v for v in valores_encontrados if abs(v - nm_final) > 0.1]
-                        epsilon_final = max(restantes) if restantes else nm_final
-                    else:
-                        # Se não tem parênteses, o Epsilon é quase sempre o PRIMEIRO número grande
-                        # ou simplesmente o maior valor da linha
-                        epsilon_final = max(valores_encontrados)
-                        # O NM é o valor que está na faixa UV (200-900) e não é o Epsilon
-                        for v in valores_encontrados:
-                            if 200 <= v <= 900 and v != epsilon_final:
-                                nm_final = v
-                                break
+        epsilon = limpar_valor_quimico(str(epsilon_raw))
 
-                    # --- LÓGICA DO SOLVENTE (Puxar texto após o Epsilon) ---
-                    solvente = "N/A"
-                    # Localizar a posição do Epsilon nas partes originais
-                    idx_pos_eps = -1
-                    for i in indices_originais:
-                        if limpar_valor_quimico(partes[i]) == epsilon_final:
-                            idx_pos_eps = i
-                            break
-                    
-                    if idx_pos_eps != -1 and idx_pos_eps + 1 < len(partes):
-                        # Procuramos a primeira palavra real após o Epsilon
-                        for k in range(idx_pos_eps + 1, len(partes)):
-                            candidato = partes[k].replace('(', '').replace(')', '').replace('"', '')
-                            if not limpar_valor_quimico(candidato) and len(candidato) > 2:
-                                if not any(x in candidato.lower() for x in ["agilent", "202", "jan"]):
-                                    solvente = candidato
-                                    break
+        if epsilon is not None:
+            database_epsilon[nome] = {
+                "coeficiente_molar": epsilon,
+                "nm": str(wavelength) if wavelength is not None else "N/A"
+            }
 
-                    database_epsilon[nome_composto] = {
-                        'coeficiente_molar': epsilon_final,
-                        'nm': nm_final,
-                        'solvente': solvente
-                    }
-
-                except:
-                    continue
-                    
     return database_epsilon
-
-meu_dicionario = carregar_database('Common Compounds DB.db')
-print(f"DEBUG: Foram carregados {len(meu_dicionario)} compostos da database.")
-# Isso vai mostrar exatamente como o Python "vê" o nome dos compostos
-print("--- PRIMEIRAS 5 CHAVES DA DATABASE ---")
-for i, chave in enumerate(meu_dicionario.keys()):
-    print(f"Chave {i}: '{chave}'") # As aspas simples ajudam a ver espaços invisíveis
-    if i == 4: break
-print("--------------------------------------")
 
 def processo_analitico():
     print("=== SOFTWARE ANALÍTICO - QUÍMICA EXPERTA ===")
-    
-    # 1. Busca do Epsilon (ε)
+
     entrada_busca = input("\nDigite o nome ou CAS para busca: ").strip()
     busca_lower = entrada_busca.lower()
+
     eps = None
     nome_exibicao = "Não identificado"
     origem_detectada = "Desconhecida"
+    nm_encontrado = "N/A"
 
-    # --- BUSCA NA BIBLIOTECA LOCAL ---
     for cas, info in compostos_db.items():
         if entrada_busca == cas or busca_lower in info['nome'].lower():
             eps = info['coeficiente_molar']
             nome_exibicao = info['nome']
-            origem_detectada = "Biblioteca Local"
-            print(f"✅ Encontrado na Biblioteca Local: {nome_exibicao}")
+            nm_encontrado = info.get("nm", "N/A")
+            origem_detectada = "Banco"
+            print(f"✅ Encontrado no Banco: {nome_exibicao}")
             break
 
-   # --- BUSCA NA DATABASE EXTERNA ---
     if eps is None:
-        for nome_db, dados in meu_dicionario.items():
-            # Dentro do loop de busca na database externa:
-            if busca_lower in nome_db.lower():
+        for chave_nome, dados in meu_dicionario.items():
+            if busca_lower in chave_nome.lower():
                 eps = dados['coeficiente_molar']
                 nm_encontrado = dados['nm']
-                solvente_encontrado = dados['solvente'] # Puxa o valor limpo da DB
-                
-                nome_exibicao = nome_db.split('_')[-1].replace('.abs.txt', '')
+                nome_exibicao = chave_nome.replace('.abs.txt', '')
                 origem_detectada = "PhotochemCAD"
-                
-                print(f"✅ Encontrado: {nome_exibicao}")
-                print(f"   λmax: {nm_encontrado} nm | Solvente: {solvente_encontrado}")
+                print(f"✅ Encontrado na Database: {nome_exibicao} (λmax: {nm_encontrado} nm)")
                 break
-    # --- SE NÃO ACHOU, PEDE MANUAL ---
+
     if eps is None:
         print("⚠️ Composto não localizado.")
         entrada_eps = input("Digite o ε manualmente (M⁻¹cm⁻¹): ").strip().replace(',', '.')
         eps = float(entrada_eps) if entrada_eps else 0.0
         nome_exibicao = input("Dê um nome para este composto: ").strip() or "Entrada Manual"
+        nm_encontrado = input("Digite o λmax (nm) [N/A]: ").strip() or "N/A"
         origem_detectada = "Manual"
 
-    # --- 2. CÁLCULOS ---
     c_optico = input('\nCaminho óptico (cm) [1.0]: ').strip().replace(',', '.')
     caminho_optico = float(c_optico) if c_optico else 1.0
 
-    conc_input = input(f"Insira a concentração (mol/L): ").strip().replace(',', '.')
+    conc_input = input("Insira a concentração (mol/L): ").strip().replace(',', '.')
     concentracao = float(conc_input) if conc_input else 0.0
 
     absorbancia = eps * caminho_optico * concentracao
 
-    # --- 3. PERGUNTA SE QUER SALVAR (APÓS O CÁLCULO) ---
     print(f"\nAbsorbância Calculada: {absorbancia:.4f}")
-    
-    # Se o composto NÃO veio da biblioteca local, oferece para salvar
-    # Procure esta parte no final do processo_analitico:
-    if origem_detectada != "Biblioteca Local":
-        confirmar = input(f"\n⭐ Deseja salvar '{nome_exibicao}'? (s/n): ").strip().lower()
+
+    if origem_detectada != "Banco":
+        confirmar = input(f"\n⭐ Deseja salvar '{nome_exibicao}' no banco? (s/n): ").strip().lower()
+
         if confirmar == 's':
             cas_id = input("Digite o CAS: ").strip() or "S/CAS"
+
+            salvar_composto_banco(
+                cas_id=cas_id,
+                nome=nome_exibicao,
+                epsilon=eps,
+                lambda_max=nm_encontrado,
+                fonte=origem_detectada
+            )
+
             compostos_db[cas_id] = {
-                'nome': nome_exibicao,
-                'coeficiente_molar': eps,
-                'nm': nm_encontrado if 'nm_encontrado' in locals() else 'N/A',
-                'solvente': solvente_encontrado if 'solvente_encontrado' in locals() else 'Manual',
-                'origem': origem_detectada
+                "nome": nome_exibicao,
+                "coeficiente_molar": eps,
+                "nm": nm_encontrado,
+                "origem": origem_detectada
             }
-            salvar_biblioteca()
-            print("💾 Salvo com sucesso!")
-    # Retorna o relatório final
-    return (f"\n--- RELATÓRIO FINAL ---\n"
-            f"Composto: {nome_exibicao}\n"
-            f"ε: {eps} M⁻¹cm⁻¹\n"
-            f"Absorbância: {absorbancia:.4f}")
+
+            print("✅ Composto salvo no banco com sucesso.")
+
+    return (
+        f"\n--- RELATÓRIO FINAL ---\n"
+        f"Composto: {nome_exibicao}\n"
+        f"ε: {eps} M⁻¹cm⁻¹\n"
+        f"λmax: {nm_encontrado}\n"
+        f"Fonte: {origem_detectada}\n"
+        f"Absorbância: {absorbancia:.4f}"
+    )
+
 
 def mostrar_biblioteca_salva():
-    # Aumentamos para 105 caracteres para caber a nova coluna
-    print("\n" + "="*105)
-    print(f"{'CAS':<15} | {'Nome':<25} | {'ε (M⁻¹cm⁻¹)':<12} | {'λmax':<8} | {'Solvente':<15} | {'Fonte'}")
-    print("-" * 105)
-    
+    print("\n" + "=" * 75)
+    print(f"{'CAS':<15} | {'Nome':<25} | {'ε (M⁻¹cm⁻¹)':<12} | {'λmax':<8} | {'Fonte'}")
+    print("-" * 75)
+
     for cas, info in compostos_db.items():
-        # Usamos .get() para evitar erro se algum item antigo não tiver solvente/nm
-        nome = info.get('nome', 'N/A')
-        eps = info.get('coeficiente_molar', 0)
-        nm = info.get('nm', 'N/A')
-        solv = info.get('solvente', 'N/A')
-        fonte = info.get('origem', 'N/A')
-        
-        print(f"{cas:<15} | {nome[:25]:<25} | {eps:<12} | {nm:<8} | {solv:<15} | {fonte}")
-    
-    print("="*105 + "\n")
+        origem = info.get('origem', 'N/A')
+        print(
+            f"{cas:<15} | "
+            f"{info['nome'][:25]:<25} | "
+            f"{info['coeficiente_molar']:<12} | "
+            f"{str(info['nm']):<8} | "
+            f"{origem}"
+        )
+
+    print("=" * 75 + "\n")
+
 
 if __name__ == "__main__":
+    garantir_dados_padrao()
+
+    compostos_db = carregar_biblioteca()
+    meu_dicionario = carregar_database()
+
+    print(f"DEBUG: Foram carregados {len(meu_dicionario)} compostos da database.")
+    print("--- PRIMEIRAS 5 CHAVES DA DATABASE ---")
+
+    for i, chave in enumerate(meu_dicionario.keys()):
+        print(f"Chave {i}: '{chave}'")
+        if i == 4:
+            break
+
+    print("--------------------------------------")
+
     mostrar_biblioteca_salva()
     resultado = processo_analitico()
-    print("\n" + "="*40)
+
+    print("\n" + "=" * 40)
     print(resultado)
-    print("="*40)
+    print("=" * 40)

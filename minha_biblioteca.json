@@ -1,3 +1,66 @@
+Po_Mosca
+po_mosca
+Compartilhando tela
+
+Po_Mosca — 24/04/2026 23:37
+agora está puxando certo
+e to indo nessa pq a muie ta aqui ja KKKK ta esperando eu terminar
+Amanhã eu organizo o código, pra separar por partes, pra ficar melhor pra gnt
+agora que ta tudo certo
+Se não entender oq eu falei aqui, manda mensagem por aqui que consigo responder no cel
+Virtus — 25/04/2026 01:30
+postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y.sa-east-1.aws.neon.tech/neondb?sslmode=require
+Virtus — 25/04/2026 02:43
+psql "postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" -f insert_spectral_measurements.sql
+Virtus — 25/04/2026 03:17
+export DATABASE_URL="postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" 
+Virtus — 25/04/2026 04:10
+amanha ou domingas falamos mais
+fiz umas alteraçoes
+Po_Mosca — 18:18
+To esperando chamarem, parece que deu pau la no teams KKKKK começou bem já
+Virtus — 18:18
+kkkkkkkkk
+dboa
+to trampando ainda
+Po_Mosca — 18:21
+taporra
+Virtus — 18:29
+teste
+deu ai
+conseguiu entra
+Po_Mosca — 18:29
+Tl esperando a mulher dar sinal de vida
+guenta ai uns 20 min
+vai que ela consegue lá e a gnt ta na call
+Virtus — 18:30
+dboa
+Po_Mosca
+ iniciou uma chamada que durou 19 minutos. — 18:45
+Virtus — 19:04
+teste
+Virtus
+ iniciou uma chamada. — 19:04
+Virtus — 19:24
+import math
+import zipfile
+import os
+import ssl
+import re
+import psycopg2
+
+message.txt
+9 KB
+{
+    "61-73-4": {
+        "nome": "Azul de Metileno",
+        "coeficiente_molar": 80000,
+        "nm": 664,
+        "origem": "Padrao"
+
+message.txt
+3 KB
+﻿
 {
     "61-73-4": {
         "nome": "Azul de Metileno",
@@ -113,73 +176,10 @@
         "nm": 303.0,
         "origem": "PhotochemCAD"
     },
-    "73-40-5": {
-        "nome": "Guanine",
-        "coeficiente_molar": 10700.0,
-        "nm": 243.0,
-        "origem": "PhotochemCAD"
-    },
-    "65-71-4": {
-        "nome": "Thymine",
-        "coeficiente_molar": 7900.0,
-        "nm": 263.75,
-        "solvente": "(264.5",
-        "origem": "PhotochemCAD"
-    },
-    "66-22-8": {
-        "nome": "Uracil",
-        "coeficiente_molar": 8200.0,
-        "nm": 258.25,
-        "solvente": "(259.5",
-        "origem": "PhotochemCAD"
-    },
-    "83-88-5": {
-        "nome": "Riboflavin",
-        "coeficiente_molar": 33000.0,
-        "nm": 263.0,
-        "solvente": "(270",
-        "origem": "PhotochemCAD"
-    },
-    "123-31-9": {
-        "nome": "Hydroquinone",
-        "coeficiente_molar": 17000.0,
-        "nm": 225.0,
-        "solvente": "(225",
-        "origem": "PhotochemCAD"
-    },
-    "87-87-6": {
-        "nome": "Tetrachlorohydroquinone",
-        "coeficiente_molar": 211.0,
-        "nm": 3.990021166003102e+40,
-        "solvente": "acetonitrile",
-        "origem": "PhotochemCAD"
-    },
-    "72-48-0": {
-        "nome": "Alizarin Red S",
-        "coeficiente_molar": 250.0,
-        "nm": 250.0,
-        "solvente": "ethanol",
-        "origem": "PhotochemCAD"
-    },
-    "91-64-5": {
-        "nome": "Coumarin",
-        "coeficiente_molar": 275.0,
-        "nm": "N/A",
-        "solvente": "ethanol",
-        "origem": "PhotochemCAD"
-    },
-    "92-82-0": {
-        "nome": "Phenazine",
-        "coeficiente_molar": 248.0,
-        "nm": "N/A",
-        "solvente": "ethanol",
-        "origem": "PhotochemCAD"
-    },
-    "262-20-4": {
-        "nome": "Phenoxathiin",
-        "coeficiente_molar": 28500.0,
-        "nm": 238.0,
-        "solvente": "ethanol",
+    "100-66-3": {
+        "nome": "Anisole",
+        "coeficiente_molar": 8453.0,
+        "nm": 220.0,
         "origem": "PhotochemCAD"
     }
 }
