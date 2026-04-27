@@ -112,5 +112,11 @@
         "coeficiente_molar": 123000.0,
         "nm": 303.0,
         "origem": "PhotochemCAD"
+    },
+    "100-66-3": {
+        "nome": "Anisole",
+        "coeficiente_molar": 8453.0,
+        "nm": 220.0,
+        "origem": "PhotochemCAD"
     }
 }

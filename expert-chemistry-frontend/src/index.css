@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+
+  --color-primary: #a7c8ff;
+  --color-on-primary: #003061;
+  --color-primary-container: #004787;
+  --color-on-primary-container: #d5e3ff;
+  
+  --color-secondary: #76f3ea;
+  --color-on-secondary: #003734;
+  --color-secondary-container: #00504c;
+  --color-on-secondary-container: #93f0e6;
+
+  --color-surface: #0b1121;
+  --color-surface-container: #161d2f;
+  --color-surface-container-low: #1a2236;
+  --color-surface-container-high: #242c42;
+  
+  --color-outline: #8e9199;
+  --color-outline-variant: #43474e;
+  
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  
+  --spacing-gutter: 24px;
+  --spacing-margin: 32px;
+}
+
+@layer base {
+  body {
+    @apply bg-[#0b1121] text-[#e2e8f0] font-sans antialiased selection:bg-primary/20 selection:text-primary;
+  }
+}
+
+.glass-panel {
+  background: rgba(22, 29, 47, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.glass-panel-hover {
+  @apply transition-all duration-300 hover:bg-white/[0.08] hover:border-white/10 hover:shadow-[0_0_30px_rgba(118,243,234,0.05)];
+}
+
+.glow-text {
+  text-shadow: 0 0 20px currentColor;
+}
+
+.lab-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-size: 32px 32px;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+}
