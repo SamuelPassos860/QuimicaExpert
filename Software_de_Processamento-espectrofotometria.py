@@ -1,57 +1,3 @@
-Po_Mosca
-po_mosca
-Compartilhando tela
-
-Po_Mosca — 24/04/2026 23:37
-agora está puxando certo
-e to indo nessa pq a muie ta aqui ja KKKK ta esperando eu terminar
-Amanhã eu organizo o código, pra separar por partes, pra ficar melhor pra gnt
-agora que ta tudo certo
-Se não entender oq eu falei aqui, manda mensagem por aqui que consigo responder no cel
-Virtus — 25/04/2026 01:30
-postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y.sa-east-1.aws.neon.tech/neondb?sslmode=require
-Virtus — 25/04/2026 02:43
-psql "postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" -f insert_spectral_measurements.sql
-Virtus — 25/04/2026 03:17
-export DATABASE_URL="postgresql://neondb_owner:npg_MV0h9GSOxaRH@ep-tiny-heart-ac4q661y-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" 
-Virtus — 25/04/2026 04:10
-amanha ou domingas falamos mais
-fiz umas alteraçoes
-Po_Mosca — 18:18
-To esperando chamarem, parece que deu pau la no teams KKKKK começou bem já
-Virtus — 18:18
-kkkkkkkkk
-dboa
-to trampando ainda
-Po_Mosca — 18:21
-taporra
-Virtus — 18:29
-teste
-deu ai
-conseguiu entra
-Po_Mosca — 18:29
-Tl esperando a mulher dar sinal de vida
-guenta ai uns 20 min
-vai que ela consegue lá e a gnt ta na call
-Virtus — 18:30
-dboa
-Po_Mosca
- iniciou uma chamada que durou 19 minutos. — 18:45
-Virtus — 19:04
-teste
-Virtus
- iniciou uma chamada. — 19:04
-Virtus — 19:24
-import math
-import zipfile
-import os
-import ssl
-import re
-import psycopg2
-
-message.txt
-9 KB
-﻿
 import math
 import zipfile
 import os
@@ -59,11 +5,11 @@ import ssl
 import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 
 ssl._create_default_https_context = ssl._create_unverified_context
-
+load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 
 def conectar_banco():
     if not DATABASE_URL:
