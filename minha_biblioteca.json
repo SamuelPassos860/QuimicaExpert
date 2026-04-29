@@ -5,10 +5,10 @@
         "coeficiente_molar": 80000,
         "nm": 664,
         "origem": "Padrao"
-
+    },
 
     
-        "61-73-4": {
+    "61-73-4":  {
         "nome": "Azul de Metileno",
         "coeficiente_molar": 80000,
         "nm": 664,

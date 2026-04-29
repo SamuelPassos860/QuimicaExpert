@@ -1,3 +1,4 @@
+ALTER TABLE compounds ADD COLUMN solvente VARCHAR(100);
 INSERT INTO spectral_data (
     compound_name, structure_file, chemical_class, absorption_file, absorption_wavelength_nm, molar_extinction_coefficient, absorption_solvent, absorption_instrument, absorption_date, absorption_reference, absorption_author, emission_file, emission_solvent, quantum_yield, emission_instrument, emission_date, emission_reference, emission_author
 ) VALUES (
