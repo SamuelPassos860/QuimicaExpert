@@ -16,6 +16,7 @@ interface SavedCompoundRecord {
 interface SpectralRecord {
   id: string;
   name: string;
+  cas: string;
   epsilon: number;
   lambdaMax: string;
   source: SourceType;
@@ -31,6 +32,7 @@ interface ApiCompoundRecord {
 
 interface ApiSpectralRecord {
   compound_name: string;
+  cas?: string | null;
   absorption_wavelength_nm: number | string | null;
   molar_extinction_coefficient: number | string | null;
 }
@@ -107,6 +109,7 @@ export default function Spectrophotometry() {
         const normalized = payload.spectralData.map((record) => ({
           id: `${record.compound_name}-${record.absorption_wavelength_nm ?? 'na'}`,
           name: record.compound_name,
+          cas: record.cas || '',
           epsilon: Number(record.molar_extinction_coefficient ?? 0),
           lambdaMax: record.absorption_wavelength_nm ? String(record.absorption_wavelength_nm) : 'N/A',
           source: 'PhotochemCAD' as const
@@ -219,7 +222,7 @@ export default function Spectrophotometry() {
 
   const applySpectralRecord = (record: SpectralRecord) => {
     setCompoundName(record.name);
-    setCasId('');
+    setCasId(record.cas);
     setEpsilon(String(record.epsilon));
     setLambdaMax(record.lambdaMax);
     setSource(record.source);

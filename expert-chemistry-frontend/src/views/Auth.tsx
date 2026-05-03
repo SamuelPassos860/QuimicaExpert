@@ -1,6 +1,6 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Atom, KeyRound, User, UserPlus } from 'lucide-react';
+import { Atom, KeyRound, LockKeyhole, User, UserPlus } from 'lucide-react';
 import type { AuthUser } from '../types/auth';
 
 interface AuthViewProps {
@@ -26,20 +26,64 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [allowPublicSignup, setAllowPublicSignup] = useState(false);
+  const [isCheckingSignup, setIsCheckingSignup] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSetupStatus() {
+      try {
+        const response = await fetch('/api/auth/setup-status');
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as { allowPublicSignup?: boolean };
+
+        if (isMounted) {
+          const shouldAllowSignup = payload.allowPublicSignup === true;
+          setAllowPublicSignup(shouldAllowSignup);
+          if (!shouldAllowSignup) {
+            setMode('login');
+          }
+        }
+      } catch (requestError) {
+        console.error('Failed to load auth setup status:', requestError);
+      } finally {
+        if (isMounted) {
+          setIsCheckingSignup(false);
+        }
+      }
+    }
+
+    void loadSetupStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const title = useMemo(
-    () => mode === 'login' ? 'Enter the lab workspace' : 'Create your lab account',
+    () => mode === 'login' ? 'Access the Expert Chemistry platform' : 'Create the initial administrator account',
     [mode]
   );
 
   const subtitle = useMemo(
     () => mode === 'login'
-      ? 'Sign in with your User ID to access the chemistry dashboard.'
-      : 'Register a new user with validation for empty fields, password strength, and duplicate User ID.',
-    [mode]
+      ? 'Sign in with your credentials to access analytical workflows, secured reports, and laboratory administration tools.'
+      : allowPublicSignup
+        ? 'Set up the first platform account. The initial account is automatically granted administrator privileges.'
+        : 'Public account creation is disabled. Please contact an administrator to provision your access.',
+    [allowPublicSignup, mode]
   );
 
   const resetForMode = (nextMode: AuthMode) => {
+    if (nextMode === 'signup' && !allowPublicSignup) {
+      return;
+    }
+
     setMode(nextMode);
     setError('');
     setForm(INITIAL_FORM);
@@ -48,6 +92,11 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
+
+    if (mode === 'signup' && !allowPublicSignup) {
+      setError('Public sign-up is disabled. Ask an administrator to create your account.');
+      return;
+    }
 
     if (!form.userId.trim() || !form.password || (mode === 'signup' && !form.fullName.trim())) {
       setError(mode === 'signup' ? 'Please fill in all fields.' : 'Please fill in User ID and password.');
@@ -113,18 +162,18 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
 
             <div className="mt-8 max-w-2xl">
               <h1 className="text-4xl md:text-6xl font-display font-semibold tracking-tight text-white">
-                Chemistry workflows with a real sign-in gate.
+                Secure access for analytical operations and laboratory oversight.
               </h1>
               <p className="mt-6 text-base md:text-lg text-white/70 leading-8">
-                Your app now starts with account access before users reach the dashboard, spectrophotometry tools, and saved reports.
+                Expert Chemistry centralizes spectrophotometry workflows, controlled user access, and operational reporting in a protected environment built for professional laboratory use.
               </p>
             </div>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
               {[
-                'Empty-field validation on both forms',
-                'Password must be more than 6 characters',
-                'Duplicate User ID blocked in PostgreSQL'
+                'Protected session access with server-managed authentication',
+                'Credential policies aligned with minimum password validation',
+                'Administrator-controlled user provisioning after initial setup'
               ].map((item) => (
                 <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-white/75">
                   {item}
@@ -152,8 +201,13 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
               <button
                 type="button"
                 onClick={() => resetForMode('signup')}
+                disabled={!allowPublicSignup || isCheckingSignup}
                 className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition-all ${
-                  mode === 'signup' ? 'bg-white text-[#0b1121]' : 'text-white/60 hover:text-white'
+                  mode === 'signup'
+                    ? 'bg-white text-[#0b1121]'
+                    : allowPublicSignup
+                      ? 'text-white/60 hover:text-white'
+                      : 'text-white/25 cursor-not-allowed'
                 }`}
               >
                 Sign Up
@@ -164,6 +218,24 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
               <h2 className="text-2xl font-display font-semibold">{title}</h2>
               <p className="mt-3 text-sm text-white/65 leading-6">{subtitle}</p>
             </div>
+
+            {!allowPublicSignup && !isCheckingSignup && (
+              <div className="mt-6 flex items-start gap-3 rounded-2xl border border-secondary/20 bg-secondary/10 px-4 py-4 text-sm text-secondary">
+                <LockKeyhole size={18} className="mt-0.5 shrink-0" />
+                <p>
+                  Account registration is restricted after the initial platform setup. New user access must be provisioned by an administrator.
+                </p>
+              </div>
+            )}
+
+            {allowPublicSignup && !isCheckingSignup && (
+              <div className="mt-6 flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-4 text-sm text-primary">
+                <LockKeyhole size={18} className="mt-0.5 shrink-0" />
+                <p>
+                  Initial setup mode is active. Create the first account to establish administrative control of the platform.
+                </p>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
               <label className="block">
@@ -222,7 +294,7 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
 
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isCheckingSignup}
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-secondary px-5 py-3.5 text-sm font-semibold text-[#03263a] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}

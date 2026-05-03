@@ -115,7 +115,7 @@ export default function App() {
 
   const renderView = (user: AuthUser) => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard': return <Dashboard currentUser={user} onOpenView={setActiveView} />;
       case 'spectrophotometry': return <Spectrophotometry />;
       case 'equipment': return <Equipment />;
       case 'reports': return <Reports />;
@@ -124,7 +124,7 @@ export default function App() {
       case 'settings': return <Settings />;
       case 'upload': return <FileUpload />;
       case 'user-management': return <UserManagement currentUser={user} />;
-      default: return <Dashboard />;
+      default: return <Dashboard currentUser={user} onOpenView={setActiveView} />;
     }
   };
 

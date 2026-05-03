@@ -14,6 +14,10 @@ export interface SignupBody {
   password: string;
 }
 
+export interface AdminCreateUserBody extends SignupBody {
+  role?: UserRole;
+}
+
 export interface LoginBody {
   userId: string;
   password: string;

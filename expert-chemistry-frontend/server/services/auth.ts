@@ -117,7 +117,14 @@ export function initializeAuthSchema() {
   return schemaReadyPromise;
 }
 
-export async function createUser(userId: string, fullName: string, password: string) {
+export async function hasAnyUsers() {
+  await initializeAuthSchema();
+
+  const result = await pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM users');
+  return Number(result.rows[0]?.count || '0') > 0;
+}
+
+export async function createUser(userId: string, fullName: string, password: string, forcedRole?: UserRole) {
   await initializeAuthSchema();
 
   const existingUser = await pool.query<Pick<UserRow, 'id'> & { id: number }>(
@@ -137,7 +144,7 @@ export async function createUser(userId: string, fullName: string, password: str
   }
 
   const existingUsersCount = await pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM users');
-  const role: UserRole = Number(existingUsersCount.rows[0]?.count || '0') === 0 ? 'admin' : 'user';
+  const role: UserRole = forcedRole || (Number(existingUsersCount.rows[0]?.count || '0') === 0 ? 'admin' : 'user');
   const passwordHash = await hashPassword(password);
   const result = await pool.query<UserRow>(
     `

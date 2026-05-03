@@ -4,6 +4,7 @@ import {
   createUser,
   deleteSessionByToken,
   getUserForSessionToken,
+  hasAnyUsers,
   isDuplicateUserIdError,
   loginUser
 } from '../services/auth.ts';
@@ -12,6 +13,16 @@ import { clearSessionCookie, getSessionTokenFromRequest, setSessionCookie } from
 import { validateLogin, validateSignup } from '../validators/auth.ts';
 
 const router = Router();
+
+router.get('/setup-status', async (_request, response) => {
+  try {
+    const allowPublicSignup = !(await hasAnyUsers());
+    response.json({ allowPublicSignup });
+  } catch (error) {
+    console.error('Failed to fetch setup status:', error);
+    response.status(500).json({ error: 'Failed to fetch setup status.' });
+  }
+});
 
 router.post('/signup', async (request, response) => {
   const validation = validateSignup((request.body ?? {}) as SignupBody);
@@ -22,6 +33,13 @@ router.post('/signup', async (request, response) => {
   }
 
   try {
+    const allowPublicSignup = !(await hasAnyUsers());
+
+    if (!allowPublicSignup) {
+      response.status(403).json({ error: 'Public sign-up is disabled. Ask an admin to create your account.' });
+      return;
+    }
+
     const user = await createUser(
       validation.data!.userId,
       validation.data!.fullName,

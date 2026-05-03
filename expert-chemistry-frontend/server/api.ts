@@ -3,6 +3,7 @@ import express from 'express';
 import authRouter from './routes/auth.ts';
 import { requireAdmin, requireAuth } from './middleware/auth.ts';
 import compoundsRouter from './routes/compounds.ts';
+import dashboardRouter from './routes/dashboard.ts';
 import healthRouter from './routes/health.ts';
 import { initializeAuthSchema } from './services/auth.ts';
 import spectralRouter from './routes/spectral.ts';
@@ -13,6 +14,7 @@ app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
+app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/compounds', requireAuth, compoundsRouter);
 app.use('/api/spectral-data', requireAuth, spectralRouter);
 

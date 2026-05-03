@@ -1,4 +1,4 @@
-import type { LoginBody, SignupBody, UserRole, UserRoleUpdateBody } from '../types/auth.ts';
+import type { AdminCreateUserBody, LoginBody, SignupBody, UserRole, UserRoleUpdateBody } from '../types/auth.ts';
 
 const MIN_PASSWORD_LENGTH = 7;
 
@@ -55,5 +55,27 @@ export function validateRoleUpdate(body: UserRoleUpdateBody) {
     data: {
       role: role as UserRole
     }
+  };
+}
+
+export function validateAdminCreateUser(body: AdminCreateUserBody) {
+  const signupValidation = validateSignup(body);
+
+  if (signupValidation.error) {
+    return { error: signupValidation.error as string };
+  }
+
+  const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : 'user';
+
+  if (role !== 'admin' && role !== 'user') {
+    return { error: 'Role must be either admin or user.' };
+  }
+
+  return {
+    data: {
+      ...signupValidation.data!,
+      role: role as UserRole
+    },
+    error: undefined
   };
 }

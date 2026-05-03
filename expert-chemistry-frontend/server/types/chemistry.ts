@@ -10,6 +10,7 @@ export interface SpectralRow {
   compound_name: string;
   absorption_wavelength_nm: string | number | null;
   molar_extinction_coefficient: string | number | null;
+  structure_file: string | null;
 }
 
 export interface CompoundUpsertBody {

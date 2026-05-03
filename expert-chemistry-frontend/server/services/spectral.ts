@@ -4,7 +4,7 @@ import { parseChemicalNumber } from '../utils/chemistry.ts';
 import { toLikePattern } from '../utils/http.ts';
 
 const listSpectralDataQuery = `
-  SELECT compound_name, absorption_wavelength_nm, molar_extinction_coefficient
+  SELECT compound_name, absorption_wavelength_nm, molar_extinction_coefficient, structure_file
   FROM spectral_data
   WHERE molar_extinction_coefficient IS NOT NULL
     AND compound_name IS NOT NULL
@@ -13,13 +13,23 @@ const listSpectralDataQuery = `
   LIMIT 250;
 `;
 
+function extractCasFromStructureFile(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/(\d{1,7}-\d{2}-\d)/);
+  return match?.[1] || null;
+}
+
 export async function listSpectralData(search: string) {
   const result = await pool.query<SpectralRow>(listSpectralDataQuery, [toLikePattern(search)]);
 
   return result.rows
     .map((row) => ({
       ...row,
-      molar_extinction_coefficient: parseChemicalNumber(row.molar_extinction_coefficient)
+      molar_extinction_coefficient: parseChemicalNumber(row.molar_extinction_coefficient),
+      cas: extractCasFromStructureFile(row.structure_file)
     }))
     .filter((row) => row.molar_extinction_coefficient !== null);
 }

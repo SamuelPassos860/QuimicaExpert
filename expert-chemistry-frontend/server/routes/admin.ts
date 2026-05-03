@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { listUsers, updateUserRole } from '../services/auth.ts';
-import type { UserRoleUpdateBody } from '../types/auth.ts';
-import { validateRoleUpdate } from '../validators/auth.ts';
+import { createUser, isDuplicateUserIdError, listUsers, updateUserRole } from '../services/auth.ts';
+import type { AdminCreateUserBody, UserRoleUpdateBody } from '../types/auth.ts';
+import { validateAdminCreateUser, validateRoleUpdate } from '../validators/auth.ts';
 
 const router = Router();
 
@@ -12,6 +12,34 @@ router.get('/users', async (_request, response) => {
   } catch (error) {
     console.error('Failed to list users:', error);
     response.status(500).json({ error: 'Failed to list users.' });
+  }
+});
+
+router.post('/users', async (request, response) => {
+  const validation = validateAdminCreateUser((request.body ?? {}) as AdminCreateUserBody);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  try {
+    const user = await createUser(
+      validation.data!.userId,
+      validation.data!.fullName,
+      validation.data!.password,
+      validation.data!.role
+    );
+
+    response.status(201).json({ user });
+  } catch (error) {
+    if (isDuplicateUserIdError(error)) {
+      response.status(409).json({ error: 'A user with this User ID already exists.' });
+      return;
+    }
+
+    console.error('Failed to create user from admin panel:', error);
+    response.status(500).json({ error: 'Failed to create user.' });
   }
 });
 
