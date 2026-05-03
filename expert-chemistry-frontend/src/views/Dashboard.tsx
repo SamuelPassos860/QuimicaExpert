@@ -26,14 +26,14 @@ const developments = [
 
 export default function Dashboard() {
   return (
-    <div className="space-y-10">
+    <div className="space-y-8 sm:space-y-10">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
           <div className="w-2 h-2 rounded-full bg-secondary shadow-[0_0_10px_rgba(118,243,234,0.5)]" />
           <span className="text-[10px] font-mono text-secondary uppercase tracking-[0.4em] font-bold">System Overview</span>
         </div>
-        <h1 className="text-4xl font-display font-bold text-white tracking-tight">Executive Dashboard</h1>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Executive Dashboard</h1>
         <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Real-time laboratory operations, high-precision performance metrics and automated system diagnostics.</p>
       </div>
 
@@ -72,11 +72,11 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-10">
         {/* Recent Activity */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-display font-bold text-white tracking-tight">System Feed</h2>
               <span className="px-2 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] font-mono font-bold border border-secondary/20">EVENT_STREAM</span>
             </div>
@@ -87,15 +87,15 @@ export default function Dashboard() {
           <div className="glass-panel overflow-hidden border-white/[0.03]">
             <div className="divide-y divide-white/[0.03]">
               {developments.map((dev) => (
-                <div key={dev.id} className="p-5 flex items-start gap-5 hover:bg-white/[0.02] transition-all group cursor-pointer relative overflow-hidden">
+                <div key={dev.id} className="p-4 sm:p-5 flex items-start gap-4 sm:gap-5 hover:bg-white/[0.02] transition-all group cursor-pointer relative overflow-hidden">
                   <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className={`mt-1 p-2 rounded-lg bg-white/[0.03] border border-white/5 ${dev.iconColor} group-hover:scale-110 transition-transform`}>
                     <dev.icon size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-0.5">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-0.5">
                       <p className="text-sm text-white/80 font-medium group-hover:text-white transition-colors">{dev.message}</p>
-                      <span className="text-[10px] font-mono text-white/20 whitespace-nowrap ml-4">{dev.time}</span>
+                      <span className="text-[10px] font-mono text-white/20 whitespace-nowrap sm:ml-4">{dev.time}</span>
                     </div>
                     <p className="text-[10px] text-white/30 font-mono uppercase tracking-widest mt-1">PID: 0x42A{dev.id} • ORIGIN: LAB_NET_01</p>
                   </div>
@@ -111,7 +111,7 @@ export default function Dashboard() {
         {/* Quick Actions / Performance */}
         <div className="space-y-6">
           <h2 className="text-xl font-display font-bold text-white tracking-tight">Environmental Core</h2>
-          <div className="glass-panel p-8 space-y-8 border-white/[0.03]">
+          <div className="glass-panel p-6 sm:p-8 space-y-8 border-white/[0.03]">
             {[
               { label: 'Compute Clusters', value: 24, color: 'bg-primary' },
               { label: 'Storage Array', value: 68, color: 'bg-secondary' },

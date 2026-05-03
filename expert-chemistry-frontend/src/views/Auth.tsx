@@ -64,6 +64,7 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
     try {
       const response = await fetch(mode === 'login' ? '/api/auth/login' : '/api/auth/signup', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
         },

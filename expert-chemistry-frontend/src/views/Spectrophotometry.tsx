@@ -469,7 +469,7 @@ Absorbance: ${safeAbsorbance}</pre>
   };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8 sm:space-y-10">
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -477,7 +477,7 @@ Absorbance: ${safeAbsorbance}</pre>
               Beer-Lambert Workflow
             </span>
           </div>
-          <h1 className="text-4xl font-display font-bold text-white tracking-tight">
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">
             Spectrophotometry Console
           </h1>
           <p className="text-white/40 mt-1 max-w-3xl text-sm leading-relaxed">
@@ -486,7 +486,7 @@ Absorbance: ${safeAbsorbance}</pre>
           </p>
         </div>
 
-        <div className="glass-panel px-5 py-4 rounded-2xl border-white/[0.03] max-w-md">
+        <div className="glass-panel px-5 py-4 rounded-2xl border-white/[0.03] w-full xl:max-w-md">
           <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
             Data Flow
           </p>
@@ -521,9 +521,9 @@ Absorbance: ${safeAbsorbance}</pre>
       </div>
 
       {activeTab === 'calculate' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-8">
-          <section className="glass-panel rounded-[2rem] p-8 border-white/[0.03] space-y-8">
-            <div className="flex items-center justify-between gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8">
+          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
                   Spectral Lookup
@@ -550,7 +550,7 @@ Absorbance: ${safeAbsorbance}</pre>
               />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[320px] overflow-auto custom-scrollbar pr-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[320px] overflow-auto custom-scrollbar pr-0 sm:pr-2">
               {isLoadingSpectral && (
                 <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   Loading spectral data...
@@ -588,7 +588,7 @@ Absorbance: ${safeAbsorbance}</pre>
                       {record.source}
                     </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
                       <p className="text-white mt-1 font-semibold">{formatNumber(record.epsilon)}</p>
@@ -643,7 +643,7 @@ Absorbance: ${safeAbsorbance}</pre>
           </section>
 
           <section className="space-y-6">
-            <div className="glass-panel rounded-[2rem] p-8 border-white/[0.03]">
+            <div className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03]">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
                   <Sigma size={22} />
@@ -684,7 +684,7 @@ Absorbance: ${safeAbsorbance}</pre>
               </div>
 
               <div className="mt-8 rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
                       Result
@@ -696,7 +696,7 @@ Absorbance: ${safeAbsorbance}</pre>
                       Calculated with <span className="text-white/80">A = epsilon x l x c</span>
                     </p>
                   </div>
-                  <div className="p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary">
+                  <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
                     <Waves size={34} />
                   </div>
                 </div>
@@ -715,8 +715,8 @@ Absorbance: ${safeAbsorbance}</pre>
               </div>
             </div>
 
-            <div className="glass-panel rounded-[2rem] p-8 border-white/[0.03] space-y-5">
-              <div className="flex items-start justify-between gap-4">
+            <div className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
                     <Sparkles size={22} />
@@ -732,7 +732,7 @@ Absorbance: ${safeAbsorbance}</pre>
                 </div>
                 <button
                   onClick={exportReportPdf}
-                  className="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all"
+                  className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all w-full sm:w-auto"
                 >
                   <Download size={16} />
                   Export PDF
@@ -778,7 +778,7 @@ Absorbance: ${safeAbsorbance}</pre>
           </section>
         </div>
       ) : (
-        <section className="glass-panel rounded-[2rem] p-8 border-white/[0.03] space-y-8">
+        <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
@@ -826,16 +826,16 @@ Absorbance: ${safeAbsorbance}</pre>
             {!isLoadingSaved && !savedError && savedCompounds.map((compound) => (
               <div
                 key={compound.id}
-                className="rounded-[1.6rem] p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
+                className="rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div>
                     <p className="text-white text-lg font-semibold">{compound.name}</p>
                     <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                       CAS {compound.cas}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
                     <span className="px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] text-[9px] font-mono uppercase tracking-[0.18em] text-secondary font-bold">
                       {compound.source}
                     </span>

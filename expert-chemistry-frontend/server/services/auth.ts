@@ -1,6 +1,8 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { pool } from '../db.ts';
 import type { AuthUser } from '../types/auth.ts';
 import { hashPassword, verifyPassword } from '../utils/password.ts';
+import { getSessionMaxAgeMs } from '../utils/http.ts';
 
 interface UserRow {
   id: number;
@@ -8,6 +10,12 @@ interface UserRow {
   full_name: string;
   created_at: string;
   password_hash: string;
+}
+
+interface SessionRow {
+  token_hash: string;
+  user_id: number;
+  expires_at: string;
 }
 
 let schemaReadyPromise: Promise<void> | null = null;
@@ -36,6 +44,38 @@ async function ensureUsersTable() {
     CREATE UNIQUE INDEX IF NOT EXISTS users_user_id_lower_idx
     ON users (LOWER(user_id))
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS user_sessions_user_id_idx
+    ON user_sessions (user_id)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS user_sessions_expires_at_idx
+    ON user_sessions (expires_at)
+  `);
+}
+
+function hashSessionToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function buildSessionExpiryDate() {
+  return new Date(Date.now() + getSessionMaxAgeMs());
+}
+
+export function generateSessionToken() {
+  return randomBytes(32).toString('hex');
 }
 
 export function initializeAuthSchema() {
@@ -104,6 +144,70 @@ export async function loginUser(userId: string, password: string) {
   }
 
   return mapUser(user);
+}
+
+export async function createSessionForUser(userId: number) {
+  await initializeAuthSchema();
+
+  const token = generateSessionToken();
+  const tokenHash = hashSessionToken(token);
+  const expiresAt = buildSessionExpiryDate();
+
+  await pool.query(
+    `
+      INSERT INTO user_sessions (user_id, token_hash, expires_at)
+      VALUES ($1, $2, $3)
+    `,
+    [userId, tokenHash, expiresAt]
+  );
+
+  return {
+    token,
+    expiresAt: expiresAt.toISOString()
+  };
+}
+
+export async function getUserForSessionToken(token: string) {
+  await initializeAuthSchema();
+
+  const tokenHash = hashSessionToken(token);
+
+  const result = await pool.query<UserRow & SessionRow>(
+    `
+      SELECT u.id, u.user_id, u.full_name, u.created_at, u.password_hash, s.token_hash, s.user_id, s.expires_at
+      FROM user_sessions s
+      INNER JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = $1
+      LIMIT 1
+    `,
+    [tokenHash]
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  if (new Date(row.expires_at).getTime() <= Date.now()) {
+    await deleteSessionByToken(token);
+    return null;
+  }
+
+  return mapUser(row);
+}
+
+export async function deleteSessionByToken(token: string) {
+  await initializeAuthSchema();
+
+  const tokenHash = hashSessionToken(token);
+  await pool.query(
+    `
+      DELETE FROM user_sessions
+      WHERE token_hash = $1
+    `,
+    [tokenHash]
+  );
 }
 
 export function isDuplicateUserIdError(error: unknown) {

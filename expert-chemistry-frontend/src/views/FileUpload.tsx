@@ -85,12 +85,12 @@ export default function FileUpload() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10">
+    <div className="max-w-4xl mx-auto space-y-8 sm:space-y-10">
       <div>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em] font-bold">Spectral Input</span>
         </div>
-        <h1 className="text-4xl font-display font-bold text-white tracking-tight">Data Acquisition</h1>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Data Acquisition</h1>
         <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Securely ingest experimental results, spectral signatures or inventory logs for automated high-performance analysis.</p>
       </div>
 
@@ -98,7 +98,7 @@ export default function FileUpload() {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative glass-panel p-16 border-2 border-dashed transition-all duration-500 flex flex-col items-center justify-center gap-6 text-center group rounded-[2rem] overflow-hidden
+        className={`relative glass-panel px-5 py-10 sm:p-16 border-2 border-dashed transition-all duration-500 flex flex-col items-center justify-center gap-6 text-center group rounded-[2rem] overflow-hidden
           ${isDragging ? 'border-primary bg-primary/10 scale-[1.02] shadow-[0_0_50px_rgba(167,200,255,0.1)]' : 'border-white/[0.05] hover:border-white/20 hover:bg-white/[0.02]'}`}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -123,7 +123,7 @@ export default function FileUpload() {
 
       {files.length > 0 && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h2 className="text-xl font-display font-bold text-white tracking-tight">Active Buffer</h2>
             <span className="text-[10px] font-mono text-white/20 uppercase tracking-[0.3em] font-bold">{files.length} NODES_PENDING</span>
           </div>
@@ -136,7 +136,7 @@ export default function FileUpload() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, x: 50 }}
-                  className="glass-panel p-5 flex items-center gap-6 group border-white/[0.03] rounded-2xl relative overflow-hidden"
+                  className="glass-panel p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 group border-white/[0.03] rounded-2xl relative overflow-hidden"
                 >
                   {f.status === 'complete' && (
                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 shadow-[2px_0_10px_rgba(34,197,94,0.3)]" />
@@ -145,7 +145,7 @@ export default function FileUpload() {
                     {getFileIcon(f.file.name)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-end mb-2">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2 mb-2">
                       <span className="text-sm text-white/90 font-bold truncate group-hover:text-white transition-colors">{f.file.name}</span>
                       <span className="text-[10px] font-mono text-white/20 font-bold uppercase tracking-widest italic">{(f.file.size / 1024 / 1024).toFixed(2)} MB</span>
                     </div>
@@ -171,7 +171,7 @@ export default function FileUpload() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-end gap-4 w-full sm:w-auto">
                     {f.status === 'uploading' ? (
                       <Loader2 size={20} className="text-primary animate-spin" />
                     ) : f.status === 'complete' ? (
@@ -192,7 +192,7 @@ export default function FileUpload() {
           </div>
 
           <div className="pt-6 flex justify-end">
-            <button className="group px-10 py-5 bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.4em] transition-all transform hover:scale-[1.02] active:scale-[0.98] rounded-2xl shadow-xl hover:shadow-primary/30 relative overflow-hidden">
+            <button className="group w-full sm:w-auto px-6 sm:px-10 py-5 bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.4em] transition-all transform hover:scale-[1.02] active:scale-[0.98] rounded-2xl shadow-xl hover:shadow-primary/30 relative overflow-hidden">
               <span className="relative z-10 flex items-center gap-3">
                 Process Batch Pipeline <Upload size={18} />
               </span>

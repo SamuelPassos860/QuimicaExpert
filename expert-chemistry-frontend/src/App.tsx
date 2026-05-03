@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import { View } from './constants';
 import type { AuthUser } from './types/auth';
@@ -14,38 +14,68 @@ import FileUpload from './views/FileUpload';
 import Spectrophotometry from './views/Spectrophotometry';
 import AuthView from './views/Auth';
 
-const AUTH_STORAGE_KEY = 'expert-chemistry-user';
-
-function getStoredUser() {
-  const storedValue = window.localStorage.getItem(AUTH_STORAGE_KEY);
-
-  if (!storedValue) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(storedValue) as AuthUser;
-  } catch (error) {
-    console.error('Failed to parse stored auth user:', error);
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-    return null;
-  }
-}
-
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSession() {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          if (isMounted) {
+            setCurrentUser(null);
+          }
+          return;
+        }
+
+        const payload = await response.json();
+
+        if (isMounted) {
+          setCurrentUser(payload.user as AuthUser);
+        }
+      } catch (error) {
+        console.error('Failed to check current session:', error);
+        if (isMounted) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingSession(false);
+        }
+      }
+    }
+
+    void loadSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleAuthenticated = (user: AuthUser) => {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
     setCurrentUser(user);
     setActiveView('dashboard');
   };
 
-  const handleLogout = () => {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-    setCurrentUser(null);
-    setActiveView('dashboard');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.error('Failed to log out:', error);
+    } finally {
+      setCurrentUser(null);
+      setActiveView('dashboard');
+    }
   };
 
   const renderView = () => {
@@ -61,6 +91,17 @@ export default function App() {
       default: return <Dashboard />;
     }
   };
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-[#0b1121] text-white flex items-center justify-center">
+        <div className="glass-panel rounded-[28px] px-8 py-6 text-center border-white/10">
+          <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">Checking Session</p>
+          <p className="mt-3 text-white/70">Validating the active lab account...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <AuthView onAuthenticated={handleAuthenticated} />;

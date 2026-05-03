@@ -9,28 +9,28 @@ const reports = [
 
 export default function Reports() {
   return (
-    <div className="space-y-10">
+    <div className="space-y-8 sm:space-y-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] font-mono text-secondary uppercase tracking-[0.4em] font-bold">Analysis Output</span>
           </div>
-          <h1 className="text-4xl font-display font-bold text-white tracking-tight">Technical Reports</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Technical Reports</h1>
           <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Generated analytical reports, validation certificates and secure compliance logs for stakeholder review.</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {reports.map((report) => (
-          <div key={report.id} className="glass-panel p-8 flex flex-col justify-between group hover:border-primary/20 transition-all cursor-pointer relative overflow-hidden">
+          <div key={report.id} className="glass-panel p-5 sm:p-8 flex flex-col justify-between group hover:border-primary/20 transition-all cursor-pointer relative overflow-hidden rounded-2xl">
             <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-primary/10 transition-colors" />
             
             <div className="space-y-6 relative z-10">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-4">
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-secondary group-hover:bg-secondary/10 group-hover:scale-110 transition-all group-hover:shadow-[0_0_20px_rgba(118,243,234,0.1)]">
                   <FileText size={24} />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex shrink-0 gap-2">
                   <button className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-white/30 hover:text-white hover:bg-white/[0.08] transition-all">
                     <Download size={18} />
                   </button>

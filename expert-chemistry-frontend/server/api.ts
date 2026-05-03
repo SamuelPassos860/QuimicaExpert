@@ -1,5 +1,6 @@
 import express from 'express';
 import authRouter from './routes/auth.ts';
+import { requireAuth } from './middleware/auth.ts';
 import compoundsRouter from './routes/compounds.ts';
 import healthRouter from './routes/health.ts';
 import { initializeAuthSchema } from './services/auth.ts';
@@ -10,8 +11,8 @@ const app = express();
 app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
-app.use('/api/compounds', compoundsRouter);
-app.use('/api/spectral-data', spectralRouter);
+app.use('/api/compounds', requireAuth, compoundsRouter);
+app.use('/api/spectral-data', requireAuth, spectralRouter);
 
 const port = Number(process.env.API_PORT || 3001);
 

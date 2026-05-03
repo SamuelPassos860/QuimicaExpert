@@ -29,12 +29,12 @@ export default function Settings() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-12">
+    <div className="max-w-5xl mx-auto space-y-10 sm:space-y-12">
       <div>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-[10px] font-mono text-secondary uppercase tracking-[0.4em] font-bold">System Configuration</span>
         </div>
-        <h1 className="text-4xl font-display font-bold text-white tracking-tight">Core Infrastructure</h1>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Core Infrastructure</h1>
         <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Global laboratory parameters, advanced security protocols, hardware integration settings and environment variables.</p>
       </div>
 
@@ -50,9 +50,9 @@ export default function Settings() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {section.items.map((item) => (
-                <div key={item.label} className="glass-panel p-8 flex items-start justify-between group hover:border-primary/30 transition-all cursor-pointer relative overflow-hidden rounded-2xl border-white/[0.03]">
+                <div key={item.label} className="glass-panel p-5 sm:p-8 flex flex-col sm:flex-row items-start justify-between gap-4 group hover:border-primary/30 transition-all cursor-pointer relative overflow-hidden rounded-2xl border-white/[0.03]">
                   <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.02] rounded-bl-full border-l border-b border-white/[0.03] transition-colors group-hover:bg-primary/5 group-hover:border-primary/20" />
-                  <div className="space-y-2 pr-4 relative z-10">
+                  <div className="space-y-2 pr-0 sm:pr-4 relative z-10">
                     <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors tracking-tight">{item.label}</h3>
                     <p className="text-xs text-white/30 leading-relaxed max-w-[220px] font-medium">{item.desc}</p>
                   </div>
@@ -66,7 +66,7 @@ export default function Settings() {
         ))}
       </div>
 
-      <div className="pt-12 border-t border-white/[0.05] flex items-center justify-between">
+      <div className="pt-10 sm:pt-12 border-t border-white/[0.05] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div className="space-y-2">
           <p className="text-sm text-white font-bold italic tracking-wide group flex items-center gap-2 cursor-default">
             <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
@@ -74,7 +74,7 @@ export default function Settings() {
           </p>
           <p className="text-[10px] font-mono text-white/20 uppercase tracking-[0.5em] font-bold">SHA-256: 0x82f4...0a91</p>
         </div>
-        <button className="px-10 py-4 bg-error/10 border border-error/20 text-error text-[10px] font-mono font-bold uppercase tracking-[0.3em] hover:bg-error hover:text-on-error transition-all rounded-2xl shadow-lg hover:shadow-error/30 active:scale-95">
+        <button className="w-full sm:w-auto px-6 sm:px-10 py-4 bg-error/10 border border-error/20 text-error text-[10px] font-mono font-bold uppercase tracking-[0.3em] hover:bg-error hover:text-on-error transition-all rounded-2xl shadow-lg hover:shadow-error/30 active:scale-95">
           Emergency Node Shutdown
         </button>
       </div>
