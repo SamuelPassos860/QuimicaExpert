@@ -7,7 +7,8 @@ import {
   Settings as SettingsIcon,
   Beaker,
   Waves,
-  ShieldCheck
+  ShieldCheck,
+  ScrollText
 } from 'lucide-react';
 import type { UserRole } from './types/auth';
 
@@ -21,7 +22,8 @@ export type View =
   | 'spectrophotometry'
   | 'settings'
   | 'login'
-  | 'user-management';
+  | 'user-management'
+  | 'audit-logs';
 
 export interface NavItem {
   id: View;
@@ -39,6 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'equipment', label: 'Equipment', icon: FlaskConical },
   { id: 'methods', label: 'Methods', icon: Beaker },
   { id: 'user-management', label: 'User Management', icon: ShieldCheck, roles: ['admin'] },
+  { id: 'audit-logs', label: 'Audit Logs', icon: ScrollText, roles: ['admin'] },
 ];
 
 export const OTHER_ITEMS: NavItem[] = [

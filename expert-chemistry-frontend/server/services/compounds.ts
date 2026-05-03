@@ -1,5 +1,5 @@
 import { pool } from '../db.ts';
-import type { CompoundRow, CompoundUpsertInput } from '../types/chemistry.ts';
+import type { CompoundDeleteTarget, CompoundRow, CompoundUpsertInput } from '../types/chemistry.ts';
 import { parseChemicalNumber } from '../utils/chemistry.ts';
 import { toLikePattern } from '../utils/http.ts';
 
@@ -32,6 +32,13 @@ const upsertCompoundQuery = `
 const deleteCompoundQuery = `
   DELETE FROM compounds
   WHERE cas = $1
+`;
+
+const findCompoundByCasQuery = `
+  SELECT cas, nome
+  FROM compounds
+  WHERE cas = $1
+  LIMIT 1
 `;
 
 async function ensureCompoundsSchema() {
@@ -100,4 +107,10 @@ export async function deleteCompound(cas: string) {
   await initializeCompoundsSchema();
   const result = await pool.query(deleteCompoundQuery, [cas]);
   return result.rowCount > 0;
+}
+
+export async function findCompoundByCas(cas: string) {
+  await initializeCompoundsSchema();
+  const result = await pool.query<CompoundDeleteTarget>(findCompoundByCasQuery, [cas]);
+  return result.rows[0] || null;
 }

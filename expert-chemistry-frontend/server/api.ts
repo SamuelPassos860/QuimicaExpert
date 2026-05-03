@@ -1,10 +1,12 @@
 import adminRouter from './routes/admin.ts';
+import auditRouter from './routes/audit.ts';
 import express from 'express';
 import authRouter from './routes/auth.ts';
 import { requireAdmin, requireAuth } from './middleware/auth.ts';
 import compoundsRouter from './routes/compounds.ts';
 import dashboardRouter from './routes/dashboard.ts';
 import healthRouter from './routes/health.ts';
+import { initializeAuditSchema } from './services/audit.ts';
 import { initializeAuthSchema } from './services/auth.ts';
 import spectralRouter from './routes/spectral.ts';
 
@@ -14,6 +16,7 @@ app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
+app.use('/api/audit', requireAuth, auditRouter);
 app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/compounds', requireAuth, compoundsRouter);
 app.use('/api/spectral-data', requireAuth, spectralRouter);
@@ -22,6 +25,10 @@ const port = Number(process.env.API_PORT || 3001);
 
 void initializeAuthSchema().catch((error) => {
   console.error('Failed to initialize auth schema:', error);
+});
+
+void initializeAuditSchema().catch((error) => {
+  console.error('Failed to initialize audit schema:', error);
 });
 
 app.listen(port, () => {

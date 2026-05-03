@@ -13,6 +13,7 @@ import FileUpload from './views/FileUpload';
 import Spectrophotometry from './views/Spectrophotometry';
 import AuthView from './views/Auth';
 import UserManagement from './views/UserManagement';
+import AuditLogs from './views/AuditLogs';
 
 function normalizeAuthUser(value: unknown): AuthUser | null {
   if (!value || typeof value !== 'object') {
@@ -116,7 +117,7 @@ export default function App() {
   const renderView = (user: AuthUser) => {
     switch (activeView) {
       case 'dashboard': return <Dashboard currentUser={user} onOpenView={setActiveView} />;
-      case 'spectrophotometry': return <Spectrophotometry />;
+      case 'spectrophotometry': return <Spectrophotometry currentUser={user} />;
       case 'equipment': return <Equipment />;
       case 'reports': return <Reports />;
       case 'clients': return <Clients />;
@@ -124,6 +125,7 @@ export default function App() {
       case 'settings': return <Settings />;
       case 'upload': return <FileUpload />;
       case 'user-management': return <UserManagement currentUser={user} />;
+      case 'audit-logs': return <AuditLogs />;
       default: return <Dashboard currentUser={user} onOpenView={setActiveView} />;
     }
   };

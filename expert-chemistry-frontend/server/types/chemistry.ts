@@ -10,6 +10,11 @@ export interface CompoundRow {
   saved_at: string | null;
 }
 
+export interface CompoundDeleteTarget {
+  cas: string;
+  nome: string;
+}
+
 export interface SpectralRow {
   compound_name: string;
   absorption_wavelength_nm: string | number | null;

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createAuditLog } from '../services/audit.ts';
 import {
   createSessionForUser,
   createUser,
@@ -78,6 +79,13 @@ router.post('/login', async (request, response) => {
 
     const session = await createSessionForUser(user.id);
     setSessionCookie(response, session.token);
+    await createAuditLog({
+      actorUserId: user.id,
+      actorUserIdentifier: user.userId,
+      actorFullName: user.fullName,
+      eventType: 'login',
+      resourceType: 'session'
+    });
     response.json({ user });
   } catch (error) {
     console.error('Failed to log in user:', error);
@@ -114,6 +122,18 @@ router.post('/logout', async (request, response) => {
     const sessionToken = getSessionTokenFromRequest(request);
 
     if (sessionToken) {
+      const user = await getUserForSessionToken(sessionToken);
+
+      if (user) {
+        await createAuditLog({
+          actorUserId: user.id,
+          actorUserIdentifier: user.userId,
+          actorFullName: user.fullName,
+          eventType: 'logout',
+          resourceType: 'session'
+        });
+      }
+
       await deleteSessionByToken(sessionToken);
     }
 
