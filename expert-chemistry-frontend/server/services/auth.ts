@@ -15,7 +15,7 @@ interface UserRow {
 
 interface SessionRow {
   token_hash: string;
-  user_id: number;
+  session_user_id: number;
   expires_at: string;
 }
 
@@ -214,7 +214,16 @@ export async function getUserForSessionToken(token: string) {
 
   const result = await pool.query<UserRow & SessionRow>(
     `
-      SELECT u.id, u.user_id, u.full_name, u.created_at, u.password_hash, u.role, s.token_hash, s.user_id, s.expires_at
+      SELECT
+        u.id,
+        u.user_id,
+        u.full_name,
+        u.created_at,
+        u.password_hash,
+        u.role,
+        s.token_hash,
+        s.user_id AS session_user_id,
+        s.expires_at
       FROM user_sessions s
       INNER JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1

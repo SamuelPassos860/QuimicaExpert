@@ -8,9 +8,9 @@ const listSpectralDataQuery = `
   FROM spectral_data
   WHERE molar_extinction_coefficient IS NOT NULL
     AND compound_name IS NOT NULL
-    AND ($1 = '' OR compound_name ILIKE $1)
+    AND ($1 = '' OR compound_name ILIKE $1 OR structure_file ILIKE $1)
   ORDER BY compound_name ASC
-  LIMIT 250;
+  LIMIT 500;
 `;
 
 function extractCasFromStructureFile(value: string | null) {

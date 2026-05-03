@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listCompounds, saveCompound } from '../services/compounds.ts';
+import { deleteCompound, listCompounds, saveCompound } from '../services/compounds.ts';
 import type { CompoundUpsertBody } from '../types/chemistry.ts';
 import { getSearchTerm } from '../utils/http.ts';
 import { validateCompoundUpsert } from '../validators/compounds.ts';
@@ -32,6 +32,29 @@ router.post('/', async (request, response) => {
   } catch (error) {
     console.error('Failed to save compound:', error);
     response.status(500).json({ error: 'Failed to save compound.' });
+  }
+});
+
+router.delete('/:cas', async (request, response) => {
+  const cas = request.params.cas?.trim();
+
+  if (!cas) {
+    response.status(400).json({ error: 'cas is required.' });
+    return;
+  }
+
+  try {
+    const deleted = await deleteCompound(cas);
+
+    if (!deleted) {
+      response.status(404).json({ error: 'Compound not found.' });
+      return;
+    }
+
+    response.status(204).send();
+  } catch (error) {
+    console.error('Failed to delete compound:', error);
+    response.status(500).json({ error: 'Failed to delete compound.' });
   }
 });
 

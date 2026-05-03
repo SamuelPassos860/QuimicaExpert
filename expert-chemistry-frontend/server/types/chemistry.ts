@@ -4,6 +4,10 @@ export interface CompoundRow {
   epsilon_m_cm: string | number | null;
   lambda_max: string | null;
   fonte: string | null;
+  path_length_cm: string | number | null;
+  concentration_mol_l: string | number | null;
+  absorbance: string | number | null;
+  saved_at: string | null;
 }
 
 export interface SpectralRow {
@@ -19,6 +23,9 @@ export interface CompoundUpsertBody {
   epsilon_m_cm?: number | string | null;
   lambda_max?: string | null;
   fonte?: string | null;
+  path_length_cm?: number | string | null;
+  concentration_mol_l?: number | string | null;
+  absorbance?: number | string | null;
 }
 
 export interface CompoundUpsertInput {
@@ -27,4 +34,7 @@ export interface CompoundUpsertInput {
   epsilon_m_cm: number;
   lambda_max: string;
   fonte: string;
+  path_length_cm: number;
+  concentration_mol_l: number;
+  absorbance: number;
 }
