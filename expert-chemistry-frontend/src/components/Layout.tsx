@@ -15,15 +15,22 @@ interface LayoutProps {
   children: React.ReactNode;
   activeView: View;
   onViewChange: (view: View) => void;
+  onLogout: () => void;
   user: {
     name: string;
     role: string;
-    avatar: string;
+    avatar?: string;
   };
 }
 
-export default function Layout({ children, activeView, onViewChange, user }: LayoutProps) {
+export default function Layout({ children, activeView, onViewChange, onLogout, user }: LayoutProps) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const initials = user.name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase())
+    .join('');
 
   return (
     <div className="min-h-screen bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
@@ -109,7 +116,13 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
             <div className="pt-6 flex items-center gap-4 px-2">
               <div className="relative shrink-0 group cursor-pointer">
                 <div className="absolute inset-0 bg-primary/20 blur-md rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                <img src={user.avatar} alt="User" className="relative w-10 h-10 rounded-xl border border-white/10 p-0.5 object-cover bg-white/5" />
+                {user.avatar ? (
+                  <img src={user.avatar} alt="User" className="relative w-10 h-10 rounded-xl border border-white/10 p-0.5 object-cover bg-white/5" />
+                ) : (
+                  <div className="relative w-10 h-10 rounded-xl border border-white/10 bg-gradient-to-br from-primary/80 to-secondary/80 flex items-center justify-center text-[#04243d] font-bold text-sm">
+                    {initials || 'U'}
+                  </div>
+                )}
                 <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-secondary border-2 border-[#0b1121] rounded-full shadow-[0_0_10px_rgba(118,243,234,0.5)]" />
               </div>
               {isSidebarOpen && (
@@ -163,7 +176,7 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
                 <span className="text-[9px] font-mono text-secondary uppercase tracking-[0.2em] block mb-0.5 font-bold">System Status: Live</span>
                 <p className="text-sm font-bold text-white leading-none font-mono">08:42:15</p>
               </div>
-              <button id="logout-btn" title="System Logout" className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
+              <button id="logout-btn" title="System Logout" onClick={onLogout} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
                 <LogOut size={20} />
               </button>
             </div>

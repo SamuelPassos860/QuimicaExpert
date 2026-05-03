@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Layout from './components/Layout';
 import { View } from './constants';
+import type { AuthUser } from './types/auth';
 
 // Placeholder Views (will be implemented in separate files)
 import Dashboard from './views/Dashboard';
@@ -11,15 +12,41 @@ import Methods from './views/Methods';
 import Settings from './views/Settings';
 import FileUpload from './views/FileUpload';
 import Spectrophotometry from './views/Spectrophotometry';
+import AuthView from './views/Auth';
 
-const MOCK_USER = {
-  name: 'Dr. Aris Thorne',
-  role: 'Chief Investigator',
-  avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAaB3vkfALpkoBsBS15qf1WK9Tfz2O_KzLd0iPLuHS83CKmbpsZa18hAF-vEtW9iSGufry27zL4rd31JSX_wdPT4JXghOammZOk8BVND6PSEuAIvWgVc16sQtNXaC7yF5w4KkMwflrQAL_E-dSARoJtGtJh1m_-fq02cuYwgo6asbirzzu6wZFWnJS1yTpXXLM-Jvq7aCV_CBZZPx8HrSdxYa-BfzUNyxRbyAl3C-wHAAA_8A7eTy8nODoz0-kDQrhT5E0g5ckR1zE'
-};
+const AUTH_STORAGE_KEY = 'expert-chemistry-user';
+
+function getStoredUser() {
+  const storedValue = window.localStorage.getItem(AUTH_STORAGE_KEY);
+
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(storedValue) as AuthUser;
+  } catch (error) {
+    console.error('Failed to parse stored auth user:', error);
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    return null;
+  }
+}
 
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
+
+  const handleAuthenticated = (user: AuthUser) => {
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    setCurrentUser(user);
+    setActiveView('dashboard');
+  };
+
+  const handleLogout = () => {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    setCurrentUser(null);
+    setActiveView('dashboard');
+  };
 
   const renderView = () => {
     switch (activeView) {
@@ -35,11 +62,19 @@ export default function App() {
     }
   };
 
+  if (!currentUser) {
+    return <AuthView onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <Layout 
       activeView={activeView} 
       onViewChange={setActiveView}
-      user={MOCK_USER}
+      onLogout={handleLogout}
+      user={{
+        name: currentUser.fullName,
+        role: `User ID: ${currentUser.userId}`
+      }}
     >
       {renderView()}
     </Layout>
