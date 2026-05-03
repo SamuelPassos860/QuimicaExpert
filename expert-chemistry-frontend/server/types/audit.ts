@@ -1,3 +1,5 @@
+import type { CreateReportBody } from './reports.ts';
+
 export const AUDIT_EVENT_TYPES = [
   'login',
   'logout',
@@ -44,17 +46,4 @@ export interface ListAuditLogsFilters {
   limit?: number;
 }
 
-export interface ReportExportAuditBody {
-  reportId?: string;
-  compoundName?: string;
-  casId?: string;
-  lambdaMax?: string;
-  source?: string;
-  epsilonValue?: number | string | null;
-  pathLengthValue?: number | string | null;
-  concentrationValue?: number | string | null;
-  absorbance?: number | string | null;
-  generatedAt?: string;
-  generatedByName?: string;
-  generatedByUserId?: string;
-}
+export type ReportExportAuditBody = CreateReportBody;

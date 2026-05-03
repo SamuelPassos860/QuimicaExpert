@@ -1,3 +1,5 @@
+import type { ReportPayload } from './reports';
+
 export type AuditLogEventType =
   | 'login'
   | 'logout'
@@ -26,17 +28,4 @@ export interface AuditLogFilters {
   userSearch: string;
 }
 
-export interface ReportExportAuditPayload {
-  reportId: string;
-  compoundName: string;
-  casId: string;
-  lambdaMax: string;
-  source: string;
-  epsilonValue: number;
-  pathLengthValue: number;
-  concentrationValue: number;
-  absorbance: number;
-  generatedAt: string;
-  generatedByName: string;
-  generatedByUserId: string;
-}
+export type ReportExportAuditPayload = ReportPayload;

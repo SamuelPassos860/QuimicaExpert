@@ -119,7 +119,7 @@ export default function App() {
       case 'dashboard': return <Dashboard currentUser={user} onOpenView={setActiveView} />;
       case 'spectrophotometry': return <Spectrophotometry currentUser={user} />;
       case 'equipment': return <Equipment />;
-      case 'reports': return <Reports />;
+      case 'reports': return <Reports currentUser={user} />;
       case 'clients': return <Clients />;
       case 'methods': return <Methods />;
       case 'settings': return <Settings />;
