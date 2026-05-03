@@ -89,7 +89,7 @@ def generate_sql():
 
                 to_sql_text(row[5]),   # Absorption File
                 to_sql_number(row[6]), # Wavelength
-                to_sql_text(row[7]),   # Epsilon
+                to_sql_number(row[7]), # Epsilon
                 to_sql_text(row[8]),   # Absorption Solvent
                 to_sql_text(row[9]),   # Absorption Instrument
                 to_sql_text(row[10]),  # Absorption Date
