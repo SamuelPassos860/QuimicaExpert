@@ -3,7 +3,6 @@ import Layout from './components/Layout';
 import { View } from './constants';
 import type { AuthUser } from './types/auth';
 
-// Placeholder Views (will be implemented in separate files)
 import Dashboard from './views/Dashboard';
 import Equipment from './views/Equipment';
 import Reports from './views/Reports';
@@ -13,6 +12,33 @@ import Settings from './views/Settings';
 import FileUpload from './views/FileUpload';
 import Spectrophotometry from './views/Spectrophotometry';
 import AuthView from './views/Auth';
+import UserManagement from './views/UserManagement';
+
+function normalizeAuthUser(value: unknown): AuthUser | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<AuthUser>;
+  const parsedId =
+    typeof candidate.id === 'number'
+      ? candidate.id
+      : typeof candidate.id === 'string'
+        ? Number(candidate.id)
+        : Number.NaN;
+
+  if (!Number.isFinite(parsedId)) {
+    return null;
+  }
+
+  return {
+    id: parsedId,
+    userId: typeof candidate.userId === 'string' ? candidate.userId : '',
+    fullName: typeof candidate.fullName === 'string' ? candidate.fullName : 'Unknown User',
+    createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : '',
+    role: candidate.role === 'admin' ? 'admin' : 'user'
+  };
+}
 
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
@@ -36,9 +62,10 @@ export default function App() {
         }
 
         const payload = await response.json();
+        const normalizedUser = normalizeAuthUser(payload.user);
 
         if (isMounted) {
-          setCurrentUser(payload.user as AuthUser);
+          setCurrentUser(normalizedUser);
         }
       } catch (error) {
         console.error('Failed to check current session:', error);
@@ -60,7 +87,15 @@ export default function App() {
   }, []);
 
   const handleAuthenticated = (user: AuthUser) => {
-    setCurrentUser(user);
+    const normalizedUser = normalizeAuthUser(user);
+
+    if (!normalizedUser) {
+      console.error('Received invalid auth user payload:', user);
+      setCurrentUser(null);
+      return;
+    }
+
+    setCurrentUser(normalizedUser);
     setActiveView('dashboard');
   };
 
@@ -78,7 +113,7 @@ export default function App() {
     }
   };
 
-  const renderView = () => {
+  const renderView = (user: AuthUser) => {
     switch (activeView) {
       case 'dashboard': return <Dashboard />;
       case 'spectrophotometry': return <Spectrophotometry />;
@@ -88,6 +123,7 @@ export default function App() {
       case 'methods': return <Methods />;
       case 'settings': return <Settings />;
       case 'upload': return <FileUpload />;
+      case 'user-management': return <UserManagement currentUser={user} />;
       default: return <Dashboard />;
     }
   };
@@ -108,16 +144,17 @@ export default function App() {
   }
 
   return (
-    <Layout 
-      activeView={activeView} 
+    <Layout
+      activeView={activeView}
       onViewChange={setActiveView}
       onLogout={handleLogout}
       user={{
         name: currentUser.fullName,
-        role: `User ID: ${currentUser.userId}`
+        role: `${currentUser.role.toUpperCase()} - ${currentUser.userId}`,
+        userRole: currentUser.role
       }}
     >
-      {renderView()}
+      {renderView(currentUser)}
     </Layout>
   );
 }

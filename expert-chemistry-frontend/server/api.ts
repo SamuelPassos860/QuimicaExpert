@@ -1,6 +1,7 @@
+import adminRouter from './routes/admin.ts';
 import express from 'express';
 import authRouter from './routes/auth.ts';
-import { requireAuth } from './middleware/auth.ts';
+import { requireAdmin, requireAuth } from './middleware/auth.ts';
 import compoundsRouter from './routes/compounds.ts';
 import healthRouter from './routes/health.ts';
 import { initializeAuthSchema } from './services/auth.ts';
@@ -11,6 +12,7 @@ const app = express();
 app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
 app.use('/api/compounds', requireAuth, compoundsRouter);
 app.use('/api/spectral-data', requireAuth, spectralRouter);
 

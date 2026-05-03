@@ -1,4 +1,4 @@
-import type { LoginBody, SignupBody } from '../types/auth.ts';
+import type { LoginBody, SignupBody, UserRole, UserRoleUpdateBody } from '../types/auth.ts';
 
 const MIN_PASSWORD_LENGTH = 7;
 
@@ -40,6 +40,20 @@ export function validateLogin(body: LoginBody) {
     data: {
       userId,
       password
+    }
+  };
+}
+
+export function validateRoleUpdate(body: UserRoleUpdateBody) {
+  const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
+
+  if (role !== 'admin' && role !== 'user') {
+    return { error: 'Role must be either admin or user.' };
+  }
+
+  return {
+    data: {
+      role: role as UserRole
     }
   };
 }

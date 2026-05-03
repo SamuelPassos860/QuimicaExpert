@@ -6,8 +6,10 @@ import {
   FlaskConical, 
   Settings as SettingsIcon,
   Beaker,
-  Waves
+  Waves,
+  ShieldCheck
 } from 'lucide-react';
+import type { UserRole } from './types/auth';
 
 export type View =
   | 'dashboard'
@@ -18,12 +20,14 @@ export type View =
   | 'methods'
   | 'spectrophotometry'
   | 'settings'
-  | 'login';
+  | 'login'
+  | 'user-management';
 
 export interface NavItem {
   id: View;
   label: string;
   icon: any;
+  roles?: UserRole[];
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -34,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'clients', label: 'Clients', icon: Users },
   { id: 'equipment', label: 'Equipment', icon: FlaskConical },
   { id: 'methods', label: 'Methods', icon: Beaker },
+  { id: 'user-management', label: 'User Management', icon: ShieldCheck, roles: ['admin'] },
 ];
 
 export const OTHER_ITEMS: NavItem[] = [

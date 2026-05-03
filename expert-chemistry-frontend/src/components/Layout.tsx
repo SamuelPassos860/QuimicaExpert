@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { NAV_ITEMS, OTHER_ITEMS, View } from '../constants';
+import type { UserRole } from '../types/auth';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -19,12 +20,13 @@ interface LayoutProps {
   user: {
     name: string;
     role: string;
+    userRole: UserRole;
     avatar?: string;
   };
 }
 
 export default function Layout({ children, activeView, onViewChange, onLogout, user }: LayoutProps) {
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const initials = user.name
     .split(' ')
     .filter(Boolean)
@@ -32,12 +34,25 @@ export default function Layout({ children, activeView, onViewChange, onLogout, u
     .map((chunk) => chunk[0]?.toUpperCase())
     .join('');
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleViewChange = (view: View) => {
     onViewChange(view);
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
   };
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user.userRole));
 
   return (
     <div className="min-h-screen bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
@@ -92,7 +107,7 @@ export default function Layout({ children, activeView, onViewChange, onLogout, u
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1.5 px-3">
-            {NAV_ITEMS.map((item) => (
+            {visibleNavItems.map((item) => (
               <button
                 key={item.id}
                 id={`nav-${item.id}`}

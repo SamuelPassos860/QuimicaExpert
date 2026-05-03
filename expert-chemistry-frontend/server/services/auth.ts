@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { pool } from '../db.ts';
-import type { AuthUser } from '../types/auth.ts';
+import type { AuthUser, UserRole } from '../types/auth.ts';
 import { hashPassword, verifyPassword } from '../utils/password.ts';
 import { getSessionMaxAgeMs } from '../utils/http.ts';
 
@@ -10,6 +10,7 @@ interface UserRow {
   full_name: string;
   created_at: string;
   password_hash: string;
+  role: UserRole;
 }
 
 interface SessionRow {
@@ -20,12 +21,13 @@ interface SessionRow {
 
 let schemaReadyPromise: Promise<void> | null = null;
 
-function mapUser(row: Pick<UserRow, 'id' | 'user_id' | 'full_name' | 'created_at'>): AuthUser {
+function mapUser(row: Pick<UserRow, 'id' | 'user_id' | 'full_name' | 'created_at' | 'role'>): AuthUser {
   return {
     id: row.id,
     userId: row.user_id,
     fullName: row.full_name,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    role: row.role
   };
 }
 
@@ -36,8 +38,20 @@ async function ensureUsersTable() {
       user_id VARCHAR(100) NOT NULL,
       full_name VARCHAR(160) NOT NULL,
       password_hash TEXT NOT NULL,
+      role VARCHAR(20) NOT NULL DEFAULT 'user',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'
+  `);
+
+  await pool.query(`
+    UPDATE users
+    SET role = 'user'
+    WHERE role IS NULL OR role NOT IN ('admin', 'user')
   `);
 
   await pool.query(`
@@ -64,6 +78,23 @@ async function ensureUsersTable() {
     CREATE INDEX IF NOT EXISTS user_sessions_expires_at_idx
     ON user_sessions (expires_at)
   `);
+
+  const adminCountResult = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM users WHERE role = 'admin'"
+  );
+
+  if (Number(adminCountResult.rows[0]?.count || '0') === 0) {
+    await pool.query(`
+      UPDATE users
+      SET role = 'admin'
+      WHERE id = (
+        SELECT id
+        FROM users
+        ORDER BY created_at ASC
+        LIMIT 1
+      )
+    `);
+  }
 }
 
 function hashSessionToken(token: string) {
@@ -105,14 +136,16 @@ export async function createUser(userId: string, fullName: string, password: str
     throw error;
   }
 
+  const existingUsersCount = await pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM users');
+  const role: UserRole = Number(existingUsersCount.rows[0]?.count || '0') === 0 ? 'admin' : 'user';
   const passwordHash = await hashPassword(password);
   const result = await pool.query<UserRow>(
     `
-      INSERT INTO users (user_id, full_name, password_hash)
-      VALUES ($1, $2, $3)
-      RETURNING id, user_id, full_name, created_at
+      INSERT INTO users (user_id, full_name, password_hash, role)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, user_id, full_name, created_at, role
     `,
-    [userId, fullName, passwordHash]
+    [userId, fullName, passwordHash, role]
   );
 
   return mapUser(result.rows[0]!);
@@ -123,7 +156,7 @@ export async function loginUser(userId: string, password: string) {
 
   const result = await pool.query<UserRow>(
     `
-      SELECT id, user_id, full_name, created_at, password_hash
+      SELECT id, user_id, full_name, created_at, password_hash, role
       FROM users
       WHERE LOWER(user_id) = LOWER($1)
       LIMIT 1
@@ -174,7 +207,7 @@ export async function getUserForSessionToken(token: string) {
 
   const result = await pool.query<UserRow & SessionRow>(
     `
-      SELECT u.id, u.user_id, u.full_name, u.created_at, u.password_hash, s.token_hash, s.user_id, s.expires_at
+      SELECT u.id, u.user_id, u.full_name, u.created_at, u.password_hash, u.role, s.token_hash, s.user_id, s.expires_at
       FROM user_sessions s
       INNER JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1
@@ -208,6 +241,36 @@ export async function deleteSessionByToken(token: string) {
     `,
     [tokenHash]
   );
+}
+
+export async function listUsers() {
+  await initializeAuthSchema();
+
+  const result = await pool.query<UserRow>(
+    `
+      SELECT id, user_id, full_name, created_at, password_hash, role
+      FROM users
+      ORDER BY created_at ASC
+    `
+  );
+
+  return result.rows.map((row) => mapUser(row));
+}
+
+export async function updateUserRole(userId: number, role: UserRole) {
+  await initializeAuthSchema();
+
+  const result = await pool.query<UserRow>(
+    `
+      UPDATE users
+      SET role = $2
+      WHERE id = $1
+      RETURNING id, user_id, full_name, created_at, password_hash, role
+    `,
+    [userId, role]
+  );
+
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
 export function isDuplicateUserIdError(error: unknown) {

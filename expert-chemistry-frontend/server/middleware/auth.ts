@@ -26,3 +26,17 @@ export const requireAuth: RequestHandler = async (request, response, next) => {
     response.status(500).json({ error: 'Failed to validate session.' });
   }
 };
+
+export const requireAdmin: RequestHandler = async (_request, response, next) => {
+  if (!response.locals.currentUser) {
+    response.status(401).json({ error: 'Authentication required.' });
+    return;
+  }
+
+  if (response.locals.currentUser.role !== 'admin') {
+    response.status(403).json({ error: 'Admin access required.' });
+    return;
+  }
+
+  next();
+};
