@@ -1,5 +1,9 @@
-import { useDeferredValue, useEffect, useState } from 'react';
-import { BookMarked, Download, FlaskConical, Search, Sparkles, Sigma, Waves } from 'lucide-react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Download, FlaskConical, Search, Sparkles, Sigma, Trash2, Waves } from 'lucide-react';
+import type { ReportExportAuditPayload } from '../types/audit';
+import type { AuthUser } from '../types/auth';
+import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
 type SourceType = 'Bank' | 'PhotochemCAD' | 'Manual';
 type TabType = 'calculate' | 'saved';
@@ -11,11 +15,16 @@ interface SavedCompoundRecord {
   epsilon: number;
   lambdaMax: string;
   source: SourceType;
+  pathLength: number;
+  concentration: number;
+  absorbance: number;
+  savedAt: string;
 }
 
 interface SpectralRecord {
   id: string;
   name: string;
+  cas: string;
   epsilon: number;
   lambdaMax: string;
   source: SourceType;
@@ -27,27 +36,31 @@ interface ApiCompoundRecord {
   epsilon_m_cm: number | string | null;
   lambda_max: string | null;
   fonte: string | null;
+  path_length_cm?: number | string | null;
+  concentration_mol_l?: number | string | null;
+  absorbance?: number | string | null;
+  saved_at?: string | null;
 }
 
 interface ApiSpectralRecord {
   compound_name: string;
+  cas?: string | null;
   absorption_wavelength_nm: number | string | null;
   molar_extinction_coefficient: number | string | null;
 }
 
+interface SpectrophotometryProps {
+  currentUser: AuthUser;
+}
+
 function formatNumber(value: number) {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('pt-BR', {
     maximumFractionDigits: 4
   }).format(value);
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString('pt-BR');
 }
 
 function normalizeSource(value: string | null): SourceType {
@@ -58,7 +71,36 @@ function normalizeSource(value: string | null): SourceType {
   return 'Bank';
 }
 
-export default function Spectrophotometry() {
+function getSpectralSortKey(value: string) {
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .toLowerCase();
+
+  return normalized || value.toLowerCase();
+}
+
+function getSpectralSortPriority(value: string) {
+  const normalized = getSpectralSortKey(value);
+
+  if (!normalized) {
+    return 2;
+  }
+
+  const firstCharacter = normalized[0];
+
+  if (/[a-z]/.test(firstCharacter)) {
+    return 0;
+  }
+
+  if (/[0-9]/.test(firstCharacter)) {
+    return 1;
+  }
+
+  return 2;
+}
+
+export default function Spectrophotometry({ currentUser }: SpectrophotometryProps) {
   const [activeTab, setActiveTab] = useState<TabType>('calculate');
   const [query, setQuery] = useState('');
   const [savedQuery, setSavedQuery] = useState('');
@@ -67,6 +109,7 @@ export default function Spectrophotometry() {
 
   const [spectralLibrary, setSpectralLibrary] = useState<SpectralRecord[]>([]);
   const [savedCompounds, setSavedCompounds] = useState<SavedCompoundRecord[]>([]);
+  const [selectedSpectralRecordId, setSelectedSpectralRecordId] = useState<string | null>(null);
   const [isLoadingSpectral, setIsLoadingSpectral] = useState(true);
   const [isLoadingSaved, setIsLoadingSaved] = useState(true);
   const [isSavingCompound, setIsSavingCompound] = useState(false);
@@ -74,6 +117,9 @@ export default function Spectrophotometry() {
   const [savedError, setSavedError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingDeleteCas, setPendingDeleteCas] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SavedCompoundRecord | null>(null);
+  const reportSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [compoundName, setCompoundName] = useState('');
   const [casId, setCasId] = useState('');
@@ -104,13 +150,24 @@ export default function Spectrophotometry() {
         }
 
         const payload = (await response.json()) as { spectralData: ApiSpectralRecord[] };
-        const normalized = payload.spectralData.map((record) => ({
-          id: `${record.compound_name}-${record.absorption_wavelength_nm ?? 'na'}`,
-          name: record.compound_name,
-          epsilon: Number(record.molar_extinction_coefficient ?? 0),
-          lambdaMax: record.absorption_wavelength_nm ? String(record.absorption_wavelength_nm) : 'N/A',
-          source: 'PhotochemCAD' as const
-        }));
+        const normalized = payload.spectralData
+          .map((record) => ({
+            id: `${record.compound_name}-${record.absorption_wavelength_nm ?? 'na'}`,
+            name: record.compound_name,
+            cas: record.cas || '',
+            epsilon: Number(record.molar_extinction_coefficient ?? 0),
+            lambdaMax: record.absorption_wavelength_nm ? String(record.absorption_wavelength_nm) : 'N/A',
+            source: 'PhotochemCAD' as const
+          }))
+          .sort((left, right) => {
+            const priorityDifference = getSpectralSortPriority(left.name) - getSpectralSortPriority(right.name);
+
+            if (priorityDifference !== 0) {
+              return priorityDifference;
+            }
+
+            return getSpectralSortKey(left.name).localeCompare(getSpectralSortKey(right.name));
+          });
 
         setSpectralLibrary(normalized);
       } catch (error) {
@@ -156,7 +213,11 @@ export default function Spectrophotometry() {
           name: compound.nome,
           epsilon: Number(compound.epsilon_m_cm ?? 0),
           lambdaMax: compound.lambda_max || 'N/A',
-          source: normalizeSource(compound.fonte)
+          source: normalizeSource(compound.fonte),
+          pathLength: Number(compound.path_length_cm ?? 0),
+          concentration: Number(compound.concentration_mol_l ?? 0),
+          absorbance: Number(compound.absorbance ?? 0),
+          savedAt: compound.saved_at || ''
         }));
 
         setSavedCompounds(normalized);
@@ -200,7 +261,11 @@ export default function Spectrophotometry() {
         name: compound.nome,
         epsilon: Number(compound.epsilon_m_cm ?? 0),
         lambdaMax: compound.lambda_max || 'N/A',
-        source: normalizeSource(compound.fonte)
+        source: normalizeSource(compound.fonte),
+        pathLength: Number(compound.path_length_cm ?? 0),
+        concentration: Number(compound.concentration_mol_l ?? 0),
+        absorbance: Number(compound.absorbance ?? 0),
+        savedAt: compound.saved_at || ''
       }));
 
       setSavedCompounds(normalized);
@@ -215,26 +280,49 @@ export default function Spectrophotometry() {
   const pathLengthValue = Number.parseFloat(pathLength) || 0;
   const concentrationValue = Number.parseFloat(concentration) || 0;
   const absorbance = epsilonValue * pathLengthValue * concentrationValue;
-  const generatedAt = new Date().toLocaleString();
+  const hasSelectedCompound = compoundName.trim().length > 0;
+  const hasCalculationInputs = pathLengthValue > 0 && concentrationValue > 0;
+  const formulaPreview = `${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)} x ${formatNumber(concentrationValue)}`;
 
   const applySpectralRecord = (record: SpectralRecord) => {
+    setSelectedSpectralRecordId(record.id);
     setCompoundName(record.name);
-    setCasId('');
+    setCasId(record.cas);
     setEpsilon(String(record.epsilon));
     setLambdaMax(record.lambdaMax);
     setSource(record.source);
   };
 
   const applySavedCompound = (compound: SavedCompoundRecord) => {
+    setSelectedSpectralRecordId(null);
     setCompoundName(compound.name);
     setCasId(compound.cas);
     setEpsilon(String(compound.epsilon));
     setLambdaMax(compound.lambdaMax);
     setSource(compound.source);
+    setPathLength(String(compound.pathLength || 0));
+    setConcentration(String(compound.concentration || 0));
     setActiveTab('calculate');
   };
 
+  const createCurrentReportPayload = (overrides?: Partial<ReportExportAuditPayload>): ReportExportAuditPayload =>
+    buildReportPayload(
+      currentUser,
+      {
+        compoundName: compoundName || 'Not identified',
+        casId: casId || 'N/A',
+        lambdaMax: lambdaMax || 'N/A',
+        source,
+        epsilonValue,
+        pathLengthValue,
+        concentrationValue,
+        absorbance
+      },
+      overrides
+    );
+
   const resetManualEntry = () => {
+    setSelectedSpectralRecordId(null);
     setCompoundName('');
     setCasId('');
     setEpsilon('0');
@@ -266,7 +354,10 @@ export default function Spectrophotometry() {
           nome: compoundName.trim(),
           epsilon_m_cm: epsilonValue,
           lambda_max: lambdaMax.trim() || 'N/A',
-          fonte: source
+          fonte: source,
+          path_length_cm: pathLengthValue,
+          concentration_mol_l: concentrationValue,
+          absorbance
         })
       });
 
@@ -276,6 +367,7 @@ export default function Spectrophotometry() {
 
       setSaveMessage('Compound saved to Saved Compounds.');
       await refreshSavedCompounds(savedQuery);
+      reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (_error) {
       setSaveError('Unable to save this compound right now.');
     } finally {
@@ -283,193 +375,149 @@ export default function Spectrophotometry() {
     }
   };
 
-  const exportReportPdf = () => {
-    const reportWindow = window.open('', '_blank', 'width=900,height=1200');
+  const logReportExport = async (payload: ReportExportAuditPayload) => {
+    try {
+      const response = await fetch('/api/audit/report-exports', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
 
-    if (!reportWindow) {
-      window.alert('Unable to open the PDF preview window. Please allow pop-ups and try again.');
+      if (!response.ok) {
+        console.warn(`Failed to record PDF export audit log: ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Failed to record PDF export audit log:', error);
+    }
+  };
+
+  const saveReportSnapshot = async (payload: ReportExportAuditPayload) => {
+    const response = await fetch('/api/reports', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+  };
+
+  const exportReportPdf = async (payload = createCurrentReportPayload(), options?: { skipSnapshotSave?: boolean }) => {
+    if (!options?.skipSnapshotSave) {
+      try {
+        await saveReportSnapshot(payload);
+      } catch (error) {
+        console.error('Failed to save report snapshot:', error);
+      }
+    }
+
+    await logReportExport(payload);
+    openPrintableReport(payload);
+  };
+
+  const exportSavedCompoundReport = (compound: SavedCompoundRecord) => {
+    applySavedCompound(compound);
+
+    void exportReportPdf(
+      createCurrentReportPayload({
+        compoundName: compound.name,
+        casId: compound.cas || 'N/A',
+        lambdaMax: compound.lambdaMax || 'N/A',
+        source: compound.source,
+        epsilonValue: compound.epsilon,
+        pathLengthValue: compound.pathLength,
+        concentrationValue: compound.concentration,
+        absorbance: compound.absorbance
+      })
+    );
+  };
+
+  const requestDeleteSavedCompound = (compound: SavedCompoundRecord) => {
+    setDeleteTarget(compound);
+  };
+
+  const confirmDeleteSavedCompound = async () => {
+    if (!deleteTarget) {
       return;
     }
 
-    const safeCompoundName = escapeHtml(compoundName || 'Not identified');
-    const safeCasId = escapeHtml(casId || 'N/A');
-    const safeLambdaMax = escapeHtml(lambdaMax || 'N/A');
-    const safeSource = escapeHtml(source);
-    const safeGeneratedAt = escapeHtml(generatedAt);
-    const safeAbsorbance = escapeHtml(formatNumber(absorbance));
-    const safeEpsilon = escapeHtml(String(epsilonValue || 0));
-    const safePathLength = escapeHtml(String(pathLengthValue || 0));
-    const safeConcentration = escapeHtml(String(concentrationValue || 0));
+    setPendingDeleteCas(deleteTarget.cas);
+    setSavedError(null);
 
-    const reportHtml = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Spectrophotometry Report</title>
-          <style>
-            * { box-sizing: border-box; }
-            body {
-              margin: 0;
-              font-family: Arial, Helvetica, sans-serif;
-              background: #eef3fb;
-              color: #0f172a;
-            }
-            .page {
-              max-width: 820px;
-              margin: 32px auto;
-              background: #ffffff;
-              border-radius: 24px;
-              padding: 40px;
-              box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
-            }
-            .hero {
-              background: linear-gradient(135deg, #dbeafe, #ecfeff);
-              border: 1px solid #cbd5e1;
-              border-radius: 20px;
-              padding: 24px;
-            }
-            .eyebrow {
-              font-size: 11px;
-              letter-spacing: 0.28em;
-              text-transform: uppercase;
-              color: #0f766e;
-              font-weight: 700;
-            }
-            h1 {
-              margin: 12px 0 8px;
-              font-size: 32px;
-              line-height: 1.1;
-            }
-            .subtitle {
-              margin: 0;
-              color: #475569;
-              font-size: 14px;
-              line-height: 1.6;
-            }
-            .meta {
-              display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-              gap: 14px;
-              margin-top: 28px;
-            }
-            .card {
-              border: 1px solid #dbe2ea;
-              border-radius: 16px;
-              padding: 16px;
-              background: #f8fafc;
-            }
-            .label {
-              margin: 0 0 8px;
-              font-size: 11px;
-              letter-spacing: 0.18em;
-              text-transform: uppercase;
-              color: #64748b;
-              font-weight: 700;
-            }
-            .value {
-              margin: 0;
-              font-size: 16px;
-              font-weight: 700;
-              color: #0f172a;
-            }
-            .result {
-              margin-top: 28px;
-              border-radius: 20px;
-              padding: 24px;
-              background: linear-gradient(135deg, #0f172a, #1e293b);
-              color: #ffffff;
-            }
-            .result .label { color: #93c5fd; }
-            .result-value {
-              margin: 10px 0 0;
-              font-size: 40px;
-              font-weight: 800;
-            }
-            .report {
-              margin-top: 28px;
-              border: 1px solid #dbe2ea;
-              border-radius: 20px;
-              padding: 24px;
-              background: #ffffff;
-            }
-            .report pre {
-              margin: 0;
-              white-space: pre-wrap;
-              font-family: "Courier New", Courier, monospace;
-              font-size: 14px;
-              line-height: 1.7;
-              color: #1e293b;
-            }
-            .footer {
-              margin-top: 28px;
-              font-size: 12px;
-              color: #64748b;
-              text-align: right;
-            }
-            @media print {
-              body { background: #ffffff; }
-              .page {
-                margin: 0;
-                max-width: none;
-                border-radius: 0;
-                box-shadow: none;
-                padding: 24px;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <main class="page">
-            <section class="hero">
-              <p class="eyebrow">Beer-Lambert Workflow</p>
-              <h1>Spectrophotometry Report</h1>
-              <p class="subtitle">Analytical output prepared from the session report panel in Expert Chemistry.</p>
-            </section>
+    try {
+      const response = await fetch(`/api/compounds/${encodeURIComponent(deleteTarget.cas)}`, {
+        method: 'DELETE'
+      });
 
-            <section class="meta">
-              <article class="card"><p class="label">Compound</p><p class="value">${safeCompoundName}</p></article>
-              <article class="card"><p class="label">Source</p><p class="value">${safeSource}</p></article>
-              <article class="card"><p class="label">CAS</p><p class="value">${safeCasId}</p></article>
-              <article class="card"><p class="label">Lambda Max</p><p class="value">${safeLambdaMax} nm</p></article>
-              <article class="card"><p class="label">Epsilon</p><p class="value">${safeEpsilon} M^-1 cm^-1</p></article>
-              <article class="card"><p class="label">Generated At</p><p class="value">${safeGeneratedAt}</p></article>
-              <article class="card"><p class="label">Path Length</p><p class="value">${safePathLength} cm</p></article>
-              <article class="card"><p class="label">Concentration</p><p class="value">${safeConcentration} mol/L</p></article>
-            </section>
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
 
-            <section class="result">
-              <p class="label">Absorbance Result</p>
-              <p class="result-value">${safeAbsorbance}</p>
-            </section>
-
-            <section class="report">
-              <pre>--- FINAL REPORT ---
-Compound: ${safeCompoundName}
-Epsilon: ${safeEpsilon} M^-1 cm^-1
-Lambda max: ${safeLambdaMax} nm
-Source: ${safeSource}
-Path length: ${safePathLength} cm
-Concentration: ${safeConcentration} mol/L
-Absorbance: ${safeAbsorbance}</pre>
-            </section>
-
-            <p class="footer">Exported from Expert Chemistry</p>
-          </main>
-        </body>
-      </html>
-    `;
-
-    reportWindow.document.open();
-    reportWindow.document.write(reportHtml);
-    reportWindow.document.close();
-    reportWindow.focus();
-    reportWindow.print();
+      await refreshSavedCompounds(savedQuery);
+      setDeleteTarget(null);
+    } catch (_error) {
+      setSavedError('Unable to delete this saved compound right now.');
+    } finally {
+      setPendingDeleteCas(null);
+    }
   };
 
+  const deleteModal = deleteTarget ? (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+      <button
+        type="button"
+        aria-label="Close delete confirmation"
+        onClick={() => setDeleteTarget(null)}
+        className="absolute inset-0 bg-[#020617]/80 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-md rounded-[2rem] border border-red-400/20 bg-[#0b1121] p-6 sm:p-7 shadow-[0_24px_80px_rgba(2,6,23,0.65)]">
+        <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-red-200 font-bold">
+          Delete Saved Compound
+        </p>
+        <h3 className="text-2xl font-display font-bold text-white mt-4">
+          Remove this record from the saved library?
+        </h3>
+        <p className="text-sm text-white/60 leading-relaxed mt-4">
+          This will permanently delete <span className="text-white font-semibold">{deleteTarget.name}</span> with CAS{' '}
+          <span className="text-white font-semibold">{deleteTarget.cas}</span> from the saved compounds list.
+        </p>
+        <div className="mt-6 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm">
+          <p className="text-white/30 font-mono uppercase tracking-widest">Saved record</p>
+          <p className="text-white font-semibold mt-2">{deleteTarget.name}</p>
+          <p className="text-white/55 mt-2">Absorbance {formatNumber(deleteTarget.absorbance)}</p>
+        </div>
+        <div className="mt-7 flex flex-col sm:flex-row gap-3">
+          <button
+            type="button"
+            onClick={() => setDeleteTarget(null)}
+            className="flex-1 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm font-semibold text-white/75 hover:bg-white/[0.07] transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={confirmDeleteSavedCompound}
+            disabled={pendingDeleteCas === deleteTarget.cas}
+            className="flex-1 rounded-xl border border-red-400/20 bg-red-500/90 px-5 py-3 text-sm font-semibold text-white hover:bg-red-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {pendingDeleteCas === deleteTarget.cas ? 'Deleting...' : 'Delete Record'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="space-y-10">
+    <div className="space-y-8 sm:space-y-10">
+      {deleteModal && createPortal(deleteModal, document.body)}
+
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -477,7 +525,7 @@ Absorbance: ${safeAbsorbance}</pre>
               Beer-Lambert Workflow
             </span>
           </div>
-          <h1 className="text-4xl font-display font-bold text-white tracking-tight">
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">
             Spectrophotometry Console
           </h1>
           <p className="text-white/40 mt-1 max-w-3xl text-sm leading-relaxed">
@@ -486,7 +534,7 @@ Absorbance: ${safeAbsorbance}</pre>
           </p>
         </div>
 
-        <div className="glass-panel px-5 py-4 rounded-2xl border-white/[0.03] max-w-md">
+        <div className="glass-panel px-5 py-4 rounded-2xl border-white/[0.03] w-full xl:max-w-md">
           <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
             Data Flow
           </p>
@@ -521,9 +569,33 @@ Absorbance: ${safeAbsorbance}</pre>
       </div>
 
       {activeTab === 'calculate' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-8">
-          <section className="glass-panel rounded-[2rem] p-8 border-white/[0.03] space-y-8">
-            <div className="flex items-center justify-between gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8">
+          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className={`rounded-2xl border p-4 ${hasSelectedCompound ? 'border-primary/30 bg-primary/10' : 'border-white/8 bg-white/[0.03]'}`}>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">Step 1</p>
+                <p className="text-white font-semibold mt-2">Select a compound</p>
+                <p className="text-sm text-white/50 mt-2">
+                  {hasSelectedCompound ? compoundName : 'Choose a record from the spectral library.'}
+                </p>
+              </div>
+              <div className={`rounded-2xl border p-4 ${hasCalculationInputs ? 'border-secondary/30 bg-secondary/10' : 'border-white/8 bg-white/[0.03]'}`}>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">Step 2</p>
+                <p className="text-white font-semibold mt-2">Enter experiment values</p>
+                <p className="text-sm text-white/50 mt-2">
+                  Provide path length and concentration to complete the equation.
+                </p>
+              </div>
+              <div className={`rounded-2xl border p-4 ${hasSelectedCompound ? 'border-white/12 bg-white/[0.04]' : 'border-white/8 bg-white/[0.03]'}`}>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">Step 3</p>
+                <p className="text-white font-semibold mt-2">Review absorbance</p>
+                <p className="text-sm text-white/50 mt-2">
+                  Save the result or export the session report when it looks right.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
                   Spectral Lookup
@@ -531,6 +603,10 @@ Absorbance: ${safeAbsorbance}</pre>
                 <h2 className="text-2xl font-display font-bold text-white mt-2">
                   Pull inputs from spectral_data
                 </h2>
+                <p className="text-sm text-white/45 mt-2">
+                  The library is ordered from <span className="text-white/80">A to Z</span> so you can scan
+                  compounds more quickly.
+                </p>
               </div>
               <button
                 onClick={resetManualEntry}
@@ -545,12 +621,21 @@ Absorbance: ${safeAbsorbance}</pre>
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search spectral_data by compound name..."
+                placeholder="Search spectral_data by compound name or CAS..."
                 className="w-full rounded-2xl bg-white/[0.03] border border-white/10 pl-12 pr-4 py-4 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-white/[0.06]"
               />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[320px] overflow-auto custom-scrollbar pr-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-white/8 bg-[#08101f]/55 px-4 py-3">
+              <p className="text-sm text-white/65">
+                {isLoadingSpectral ? 'Refreshing spectral library...' : `${spectralLibrary.length} compounds available in the current view`}
+              </p>
+              <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-white/30">
+                Search supports compound names and CAS values
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[950px] overflow-auto custom-scrollbar pr-0 sm:pr-2">
               {isLoadingSpectral && (
                 <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   Loading spectral data...
@@ -573,22 +658,36 @@ Absorbance: ${safeAbsorbance}</pre>
                 <button
                   key={record.id}
                   onClick={() => applySpectralRecord(record)}
-                  className="text-left rounded-2xl p-5 bg-white/[0.03] border border-white/8 hover:border-primary/25 hover:bg-primary/5 transition-all group"
+                  className={`text-left rounded-2xl p-5 border transition-all group ${
+                    selectedSpectralRecordId === record.id
+                      ? 'bg-primary/12 border-primary/40 shadow-[0_0_40px_rgba(167,200,255,0.18)]'
+                      : 'bg-white/[0.03] border-white/8 hover:border-primary/25 hover:bg-primary/5'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white font-semibold group-hover:text-primary transition-colors break-words leading-relaxed">
-                      {record.name}
-                    </p>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
-                      Spectral source
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`font-semibold break-words leading-relaxed transition-colors ${
+                          selectedSpectralRecordId === record.id ? 'text-primary' : 'text-white group-hover:text-primary'
+                        }`}
+                      >
+                        {record.name}
+                      </p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
+                        Spectral source
+                      </p>
                     </div>
-                    <span className="px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] text-[9px] font-mono uppercase tracking-[0.18em] text-secondary font-bold">
+                    <span
+                      className={`px-2 py-1 rounded-full border text-[9px] font-mono uppercase tracking-[0.18em] font-bold ${
+                        selectedSpectralRecordId === record.id
+                          ? 'border-primary/25 bg-primary/15 text-primary'
+                          : 'border-white/10 bg-white/[0.03] text-secondary'
+                      }`}
+                    >
                       {record.source}
                     </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
                       <p className="text-white mt-1 font-semibold">{formatNumber(record.epsilon)}</p>
@@ -602,48 +701,10 @@ Absorbance: ${safeAbsorbance}</pre>
               ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <label className="space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Compound Name</span>
-                <input
-                  value={compoundName}
-                  onChange={(event) => setCompoundName(event.target.value)}
-                  className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">CAS</span>
-                <input
-                  value={casId}
-                  onChange={(event) => setCasId(event.target.value)}
-                  placeholder="Optional manual CAS"
-                  className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Molar Extinction Coefficient</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={epsilon}
-                  onChange={(event) => setEpsilon(event.target.value)}
-                  className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Lambda Max (nm)</span>
-                <input
-                  value={lambdaMax}
-                  onChange={(event) => setLambdaMax(event.target.value)}
-                  className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                />
-              </label>
-            </div>
           </section>
 
           <section className="space-y-6">
-            <div className="glass-panel rounded-[2rem] p-8 border-white/[0.03]">
+            <div className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03]">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
                   <Sigma size={22} />
@@ -659,6 +720,28 @@ Absorbance: ${safeAbsorbance}</pre>
               </div>
 
               <div className="space-y-5">
+                <div className="rounded-2xl border border-primary/20 bg-primary/8 px-4 py-4">
+                  <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-primary font-bold">
+                    Current Compound
+                  </p>
+                  <p className="text-xl font-display font-bold text-white mt-2">
+                    {compoundName || 'Select a compound from the spectral library'}
+                  </p>
+                  <p className="text-sm text-white/50 mt-2">
+                    CAS {casId || 'N/A'} - Lambda Max {lambdaMax || 'N/A'} nm
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 text-sm">
+                    <div className="rounded-xl bg-[#08101f]/65 border border-white/8 p-3">
+                      <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
+                      <p className="text-white mt-2 font-semibold">{formatNumber(epsilonValue)} M^-1 cm^-1</p>
+                    </div>
+                    <div className="rounded-xl bg-[#08101f]/65 border border-white/8 p-3">
+                      <p className="text-white/30 font-mono uppercase tracking-widest">source</p>
+                      <p className="text-white mt-2 font-semibold">{source}</p>
+                    </div>
+                  </div>
+                </div>
+
                 <label className="space-y-2 block">
                   <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Optical Path Length (cm)</span>
                   <input
@@ -684,7 +767,7 @@ Absorbance: ${safeAbsorbance}</pre>
               </div>
 
               <div className="mt-8 rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
                       Result
@@ -696,9 +779,15 @@ Absorbance: ${safeAbsorbance}</pre>
                       Calculated with <span className="text-white/80">A = epsilon x l x c</span>
                     </p>
                   </div>
-                  <div className="p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary">
+                  <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
                     <Waves size={34} />
                   </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
+                  <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">Live Formula Preview</p>
+                  <p className="text-white font-semibold mt-3 break-words">A = {formulaPreview}</p>
+                  <p className="text-sm text-white/55 mt-2">A = {formatNumber(absorbance)}</p>
                 </div>
               </div>
 
@@ -715,8 +804,8 @@ Absorbance: ${safeAbsorbance}</pre>
               </div>
             </div>
 
-            <div className="glass-panel rounded-[2rem] p-8 border-white/[0.03] space-y-5">
-              <div className="flex items-start justify-between gap-4">
+            <div ref={reportSectionRef} className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
                     <Sparkles size={22} />
@@ -726,20 +815,32 @@ Absorbance: ${safeAbsorbance}</pre>
                       Session Report
                     </p>
                     <h2 className="text-2xl font-display font-bold text-white mt-1">
-                      Script-style output
+                      Technical analysis report
                     </h2>
                   </div>
                 </div>
                 <button
-                  onClick={exportReportPdf}
-                  className="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all"
+                  onClick={() => {
+                    void exportReportPdf();
+                  }}
+                  className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all w-full sm:w-auto"
                 >
                   <Download size={16} />
-                  Export PDF
+                  Print PDF Report
                 </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Generated by</p>
+                  <p className="text-white mt-2 font-semibold">{currentUser.fullName}</p>
+                  <p className="text-xs text-white/45 mt-2">User ID {currentUser.userId}</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Formula</p>
+                  <p className="text-white mt-2 font-semibold break-words">A = {formulaPreview}</p>
+                  <p className="text-xs text-white/45 mt-2">A = {formatNumber(absorbance)}</p>
+                </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Compound</p>
                   <p className="text-white mt-2 font-semibold">{compoundName || 'Not identified'}</p>
@@ -760,8 +861,10 @@ Absorbance: ${safeAbsorbance}</pre>
 
               <div className="rounded-[1.5rem] bg-[#08101f] border border-white/8 p-5 font-mono text-sm text-white/80">
                 <p>--- FINAL REPORT ---</p>
+                <p className="mt-3">Generated by: {currentUser.fullName} ({currentUser.userId})</p>
+                <p>Formula: A = {formulaPreview}</p>
                 <p className="mt-3">Compound: {compoundName || 'Not identified'}</p>
-                <p>Epsilon: {epsilonValue || 0} M^-1 cm^-1</p>
+                <p>Epsilon: {formatNumber(epsilonValue)} M^-1 cm^-1</p>
                 <p>Lambda max: {lambdaMax || 'N/A'} nm</p>
                 <p>Source: {source}</p>
                 <p>Absorbance: {formatNumber(absorbance)}</p>
@@ -778,7 +881,7 @@ Absorbance: ${safeAbsorbance}</pre>
           </section>
         </div>
       ) : (
-        <section className="glass-panel rounded-[2rem] p-8 border-white/[0.03] space-y-8">
+        <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
@@ -826,30 +929,41 @@ Absorbance: ${safeAbsorbance}</pre>
             {!isLoadingSaved && !savedError && savedCompounds.map((compound) => (
               <div
                 key={compound.id}
-                className="rounded-[1.6rem] p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
+                className="rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div>
                     <p className="text-white text-lg font-semibold">{compound.name}</p>
                     <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                       CAS {compound.cas}
                     </p>
+                    <p className="text-xs text-white/45 mt-2">
+                      Saved {compound.savedAt ? formatDateTime(compound.savedAt) : 'recently'}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
                     <span className="px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] text-[9px] font-mono uppercase tracking-[0.18em] text-secondary font-bold">
                       {compound.source}
                     </span>
                     <button
-                      onClick={() => applySavedCompound(compound)}
-                      className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-on-primary transition-all"
-                      title="Load into calculator"
+                      onClick={() => requestDeleteSavedCompound(compound)}
+                      disabled={pendingDeleteCas === compound.cas}
+                      className="p-2.5 rounded-xl bg-red-500/10 text-red-200 border border-red-400/20 hover:bg-red-500 hover:text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      title="Delete saved compound"
                     >
-                      <BookMarked size={16} />
+                      <Trash2 size={16} />
+                    </button>
+                    <button
+                      onClick={() => exportSavedCompoundReport(compound)}
+                      className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-on-primary transition-all"
+                      title="Generate report PDF"
+                    >
+                      <Download size={16} />
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-5 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5 text-sm">
                   <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                     <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
                     <p className="text-white mt-2 font-semibold">{formatNumber(compound.epsilon)}</p>
@@ -857,6 +971,18 @@ Absorbance: ${safeAbsorbance}</pre>
                   <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                     <p className="text-white/30 font-mono uppercase tracking-widest">lambda max</p>
                     <p className="text-white mt-2 font-semibold">{compound.lambdaMax} nm</p>
+                  </div>
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">path length</p>
+                    <p className="text-white mt-2 font-semibold">{formatNumber(compound.pathLength)} cm</p>
+                  </div>
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">concentration</p>
+                    <p className="text-white mt-2 font-semibold">{formatNumber(compound.concentration)} mol/L</p>
+                  </div>
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 sm:col-span-2">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">absorbance</p>
+                    <p className="text-white mt-2 font-semibold">{formatNumber(compound.absorbance)}</p>
                   </div>
                 </div>
               </div>

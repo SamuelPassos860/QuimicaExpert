@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -10,20 +10,49 @@ import {
   X
 } from 'lucide-react';
 import { NAV_ITEMS, OTHER_ITEMS, View } from '../constants';
+import type { UserRole } from '../types/auth';
 
 interface LayoutProps {
   children: React.ReactNode;
   activeView: View;
   onViewChange: (view: View) => void;
+  onLogout: () => void;
   user: {
     name: string;
     role: string;
-    avatar: string;
+    userRole: UserRole;
+    avatar?: string;
   };
 }
 
-export default function Layout({ children, activeView, onViewChange, user }: LayoutProps) {
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+export default function Layout({ children, activeView, onViewChange, onLogout, user }: LayoutProps) {
+  const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const initials = user.name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase())
+    .join('');
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleViewChange = (view: View) => {
+    onViewChange(view);
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user.userRole));
 
   return (
     <div className="min-h-screen bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
@@ -34,8 +63,19 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
       </div>
 
       {/* Sidebar */}
-      <aside 
-        className={`fixed inset-y-0 left-0 z-50 glass-panel border-r border-white-[0.03] transition-all duration-500 ease-in-out ${isSidebarOpen ? 'w-72' : 'w-20'}`}
+      {isSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar overlay"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-[#020617]/65 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 glass-panel border-r border-white-[0.03] transition-all duration-500 ease-in-out ${
+          isSidebarOpen ? 'translate-x-0 lg:w-72' : '-translate-x-full lg:translate-x-0 lg:w-20'
+        } w-[86vw] max-w-72 lg:w-auto`}
       >
         <div className="flex flex-col h-full scrollbar-none">
           {/* Logo Area */}
@@ -67,11 +107,11 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1.5 px-3">
-            {NAV_ITEMS.map((item) => (
+            {visibleNavItems.map((item) => (
               <button
                 key={item.id}
                 id={`nav-${item.id}`}
-                onClick={() => onViewChange(item.id)}
+                onClick={() => handleViewChange(item.id)}
                 className={`w-full flex items-center gap-4 px-3 py-3 rounded-lg transition-all duration-300 group relative
                   ${activeView === item.id 
                     ? 'bg-white/10 text-primary border border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.3)]' 
@@ -95,7 +135,7 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
               <button
                 key={item.id}
                 id={`nav-other-${item.id}`}
-                onClick={() => onViewChange(item.id)}
+                onClick={() => handleViewChange(item.id)}
                 className={`w-full flex items-center gap-4 px-3 py-3 rounded-lg transition-all duration-300 group
                   ${activeView === item.id 
                     ? 'bg-white/10 text-primary border border-white/10' 
@@ -109,7 +149,13 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
             <div className="pt-6 flex items-center gap-4 px-2">
               <div className="relative shrink-0 group cursor-pointer">
                 <div className="absolute inset-0 bg-primary/20 blur-md rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                <img src={user.avatar} alt="User" className="relative w-10 h-10 rounded-xl border border-white/10 p-0.5 object-cover bg-white/5" />
+                {user.avatar ? (
+                  <img src={user.avatar} alt="User" className="relative w-10 h-10 rounded-xl border border-white/10 p-0.5 object-cover bg-white/5" />
+                ) : (
+                  <div className="relative w-10 h-10 rounded-xl border border-white/10 bg-gradient-to-br from-primary/80 to-secondary/80 flex items-center justify-center text-[#04243d] font-bold text-sm">
+                    {initials || 'U'}
+                  </div>
+                )}
                 <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-secondary border-2 border-[#0b1121] rounded-full shadow-[0_0_10px_rgba(118,243,234,0.5)]" />
               </div>
               {isSidebarOpen && (
@@ -124,10 +170,14 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
       </aside>
 
       {/* Main Content Area */}
-      <div className={`transition-all duration-500 ease-in-out ${isSidebarOpen ? 'pl-72' : 'pl-20'}`}>
+      <div
+        className={`transition-all duration-500 ease-in-out ${
+          isSidebarOpen ? 'lg:pl-72' : 'lg:pl-20'
+        } pl-0`}
+      >
         {/* Top Bar */}
-        <header className="h-20 glass-panel border border-white/5 flex items-center justify-between px-8 sticky top-4 z-40 mx-6 mt-6 rounded-2xl shadow-2xl">
-          <div className="flex items-center gap-6 w-full max-w-2xl">
+        <header className="glass-panel border border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-4 sticky top-3 sm:top-4 z-40 mx-3 sm:mx-4 lg:mx-6 mt-3 sm:mt-6 rounded-2xl shadow-2xl">
+          <div className="flex items-center gap-3 sm:gap-4 lg:gap-6 w-full lg:max-w-2xl">
             <button 
               id="sidebar-toggle"
               onClick={() => setSidebarOpen(!isSidebarOpen)}
@@ -135,7 +185,7 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="relative flex-1 group">
+            <div className="relative flex-1 group min-w-0">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary transition-all group-focus-within:scale-110" />
               <input 
                 type="text" 
@@ -145,7 +195,7 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full lg:w-auto">
             <div className="flex items-center gap-3">
               <button id="noti-btn" className="p-2.5 text-white/40 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/5 rounded-xl transition-all relative group">
                 <Bell size={20} className="group-hover:rotate-12 transition-transform" />
@@ -156,14 +206,14 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
               </button>
             </div>
             
-            <div className="h-8 w-px bg-white/10" />
+            <div className="hidden sm:block h-8 w-px bg-white/10" />
             
-            <div className="flex items-center gap-6">
-              <div className="text-right hidden sm:block">
+            <div className="flex items-center gap-3 sm:gap-6">
+              <div className="text-right hidden md:block">
                 <span className="text-[9px] font-mono text-secondary uppercase tracking-[0.2em] block mb-0.5 font-bold">System Status: Live</span>
                 <p className="text-sm font-bold text-white leading-none font-mono">08:42:15</p>
               </div>
-              <button id="logout-btn" title="System Logout" className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
+              <button id="logout-btn" title="System Logout" onClick={onLogout} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
                 <LogOut size={20} />
               </button>
             </div>
@@ -171,7 +221,7 @@ export default function Layout({ children, activeView, onViewChange, user }: Lay
         </header>
 
         {/* Content */}
-        <main className="p-10 min-h-[calc(100vh-120px)] relative z-10">
+        <main className="px-3 sm:px-4 lg:px-10 py-6 sm:py-8 lg:py-10 min-h-[calc(100vh-120px)] relative z-10">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeView}

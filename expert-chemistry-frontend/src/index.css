@@ -34,6 +34,43 @@
   body {
     @apply bg-[#0b1121] text-[#e2e8f0] font-sans antialiased selection:bg-primary/20 selection:text-primary;
   }
+
+  input,
+  select,
+  textarea {
+    color: #e2e8f0;
+    accent-color: #76f3ea;
+  }
+
+  select {
+    background-color: rgba(255, 255, 255, 0.04);
+    color-scheme: dark;
+  }
+
+  option {
+    background-color: #161d2f;
+    color: #e2e8f0;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus {
+    -webkit-text-fill-color: #e2e8f0;
+    -webkit-box-shadow: 0 0 0 1000px #161d2f inset;
+    box-shadow: 0 0 0 1000px #161d2f inset;
+    background-color: #161d2f;
+    background-clip: content-box;
+    caret-color: #76f3ea;
+    transition: background-color 9999s ease-in-out 0s;
+    border-radius: 1rem;
+  }
 }
 
 .glass-panel {

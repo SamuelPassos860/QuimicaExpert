@@ -1,16 +1,42 @@
+import adminRouter from './routes/admin.ts';
+import auditRouter from './routes/audit.ts';
 import express from 'express';
+import authRouter from './routes/auth.ts';
+import { requireAdmin, requireAuth } from './middleware/auth.ts';
 import compoundsRouter from './routes/compounds.ts';
+import dashboardRouter from './routes/dashboard.ts';
 import healthRouter from './routes/health.ts';
+import reportsRouter from './routes/reports.ts';
+import { initializeAuditSchema } from './services/audit.ts';
+import { initializeAuthSchema } from './services/auth.ts';
+import { initializeReportsSchema } from './services/reports.ts';
 import spectralRouter from './routes/spectral.ts';
 
 const app = express();
 
 app.use(express.json());
 app.use('/api/health', healthRouter);
-app.use('/api/compounds', compoundsRouter);
-app.use('/api/spectral-data', spectralRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
+app.use('/api/audit', requireAuth, auditRouter);
+app.use('/api/dashboard', requireAuth, dashboardRouter);
+app.use('/api/compounds', requireAuth, compoundsRouter);
+app.use('/api/reports', requireAuth, reportsRouter);
+app.use('/api/spectral-data', requireAuth, spectralRouter);
 
 const port = Number(process.env.API_PORT || 3001);
+
+void initializeAuthSchema().catch((error) => {
+  console.error('Failed to initialize auth schema:', error);
+});
+
+void initializeAuditSchema().catch((error) => {
+  console.error('Failed to initialize audit schema:', error);
+});
+
+void initializeReportsSchema().catch((error) => {
+  console.error('Failed to initialize reports schema:', error);
+});
 
 app.listen(port, () => {
   console.log(`Expert Chemistry API listening on http://localhost:${port}`);
