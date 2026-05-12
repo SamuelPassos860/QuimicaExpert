@@ -3,11 +3,13 @@ import type { ReportPayload } from './reports';
 export type AuditLogEventType =
   | 'login'
   | 'logout'
+  | 'password_reset_requested'
+  | 'password_reset_completed'
   | 'compound_saved'
   | 'compound_deleted'
   | 'pdf_exported';
 
-export type AuditLogResourceType = 'session' | 'compound' | 'spectrophotometry_report';
+export type AuditLogResourceType = 'session' | 'user' | 'compound' | 'spectrophotometry_report';
 
 export interface AuditLog {
   id: number;

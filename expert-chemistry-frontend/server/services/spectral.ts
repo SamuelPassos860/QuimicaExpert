@@ -4,7 +4,7 @@ import { parseChemicalNumber } from '../utils/chemistry.ts';
 import { toLikePattern } from '../utils/http.ts';
 
 const listSpectralDataQuery = `
-  SELECT compound_name, absorption_wavelength_nm, molar_extinction_coefficient, structure_file
+  SELECT compound_name, absorption_wavelength_nm, molar_extinction_coefficient, absorption_solvent, structure_file
   FROM spectral_data
   WHERE molar_extinction_coefficient IS NOT NULL
     AND compound_name IS NOT NULL

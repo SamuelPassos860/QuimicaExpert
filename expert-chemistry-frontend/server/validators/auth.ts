@@ -1,4 +1,12 @@
-import type { AdminCreateUserBody, LoginBody, SignupBody, UserRole, UserRoleUpdateBody } from '../types/auth.ts';
+import type {
+  AdminCreateUserBody,
+  ForgotPasswordBody,
+  LoginBody,
+  ResetPasswordBody,
+  SignupBody,
+  UserRole,
+  UserRoleUpdateBody
+} from '../types/auth.ts';
 
 const MIN_PASSWORD_LENGTH = 7;
 
@@ -39,6 +47,40 @@ export function validateLogin(body: LoginBody) {
   return {
     data: {
       userId,
+      password
+    }
+  };
+}
+
+export function validateForgotPassword(body: ForgotPasswordBody) {
+  const userId = normalizeText(body.userId);
+
+  if (!userId) {
+    return { error: 'User ID is required.' };
+  }
+
+  return {
+    data: {
+      userId
+    }
+  };
+}
+
+export function validateResetPassword(body: ResetPasswordBody) {
+  const token = normalizeText(body.token);
+  const password = typeof body.password === 'string' ? body.password : '';
+
+  if (!token || !password) {
+    return { error: 'Reset token and new password are required.' };
+  }
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: 'Password must be more than 6 characters long.' };
+  }
+
+  return {
+    data: {
+      token,
       password
     }
   };

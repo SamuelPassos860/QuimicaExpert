@@ -1,33 +1,72 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Atom, KeyRound, LockKeyhole, User, UserPlus } from 'lucide-react';
+import { ArrowLeft, Atom, KeyRound, LockKeyhole, User, UserPlus } from 'lucide-react';
 import type { AuthUser } from '../types/auth';
 
 interface AuthViewProps {
   onAuthenticated: (user: AuthUser) => void;
 }
 
-type AuthMode = 'login' | 'signup';
+type AuthMode = 'login' | 'signup' | 'forgot-password' | 'reset-password';
 
 interface FormState {
   userId: string;
   fullName: string;
   password: string;
+  confirmPassword: string;
+  resetToken: string;
 }
 
 const INITIAL_FORM: FormState = {
   userId: '',
   fullName: '',
-  password: ''
+  password: '',
+  confirmPassword: '',
+  resetToken: ''
 };
 
 export default function AuthView({ onAuthenticated }: AuthViewProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [resetLink, setResetLink] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [allowPublicSignup, setAllowPublicSignup] = useState(false);
   const [isCheckingSignup, setIsCheckingSignup] = useState(true);
+
+  useEffect(() => {
+    const applyModeFromHash = () => {
+      const hashValue = window.location.hash.replace(/^#\/?/, '');
+      const [hashMode, hashQuery = ''] = hashValue.split('?');
+
+      if (hashMode === 'forgot-password') {
+        setMode('forgot-password');
+        return;
+      }
+
+      if (hashMode === 'reset-password') {
+        const token = new URLSearchParams(hashQuery).get('token') || '';
+        setMode('reset-password');
+        setForm((current) => ({ ...current, resetToken: token }));
+        return;
+      }
+
+      if (hashMode === 'signup') {
+        setMode('signup');
+        return;
+      }
+
+      setMode('login');
+    };
+
+    applyModeFromHash();
+    window.addEventListener('hashchange', applyModeFromHash);
+
+    return () => {
+      window.removeEventListener('hashchange', applyModeFromHash);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -66,16 +105,36 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
   }, []);
 
   const title = useMemo(
-    () => mode === 'login' ? 'Access the Expert Chemistry platform' : 'Create the initial administrator account',
+    () => {
+      if (mode === 'forgot-password') {
+        return 'Recover access to your account';
+      }
+
+      if (mode === 'reset-password') {
+        return 'Create a new password';
+      }
+
+      return mode === 'login' ? 'Access the Expert Chemistry platform' : 'Create the initial administrator account';
+    },
     [mode]
   );
 
   const subtitle = useMemo(
-    () => mode === 'login'
-      ? 'Sign in with your credentials to access analytical workflows, secured reports, and laboratory administration tools.'
-      : allowPublicSignup
-        ? 'Set up the first platform account. The initial account is automatically granted administrator privileges.'
-        : 'Public account creation is disabled. Please contact an administrator to provision your access.',
+    () => {
+      if (mode === 'forgot-password') {
+        return 'Enter your User ID to generate a temporary reset link for this account.';
+      }
+
+      if (mode === 'reset-password') {
+        return 'Use the temporary token from your recovery link and choose a new password with more than 6 characters.';
+      }
+
+      return mode === 'login'
+        ? 'Sign in with your credentials to access analytical workflows, secured reports, and laboratory administration tools.'
+        : allowPublicSignup
+          ? 'Set up the first platform account. The initial account is automatically granted administrator privileges.'
+          : 'Public account creation is disabled. Please contact an administrator to provision your access.';
+    },
     [allowPublicSignup, mode]
   );
 
@@ -86,12 +145,108 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
 
     setMode(nextMode);
     setError('');
+    setNotice('');
+    setResetLink('');
     setForm(INITIAL_FORM);
+    window.location.hash = nextMode === 'login' ? '#/login' : `#/${nextMode}`;
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
+    setNotice('');
+    setResetLink('');
+
+    if (mode === 'forgot-password') {
+      if (!form.userId.trim()) {
+        setError('Informe seu User ID para solicitar a recuperação de senha.');
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        const response = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            userId: form.userId.trim()
+          })
+        });
+
+        const payload = await response.json();
+
+        if (!response.ok) {
+          setError(payload.error || 'Não foi possível solicitar a recuperação de senha.');
+          return;
+        }
+
+        if (typeof payload.resetToken === 'string') {
+          const resetUrl = `${window.location.origin}/#/reset-password?token=${encodeURIComponent(payload.resetToken)}`;
+          setForm((current) => ({ ...current, resetToken: payload.resetToken }));
+          setResetLink(resetUrl);
+          setNotice('Solicitação registrada. Abra o link temporário abaixo para redefinir sua senha.');
+        } else {
+          setNotice('Se este User ID existir, uma solicitação de recuperação foi registrada.');
+        }
+      } catch (requestError) {
+        console.error('Password reset request failed:', requestError);
+        setError('Não foi possível alcançar o serviço de recuperação de senha.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'reset-password') {
+      if (!form.resetToken.trim() || !form.password || !form.confirmPassword) {
+        setError('Informe o token, a nova senha e a confirmação.');
+        return;
+      }
+
+      if (form.password.length < 7) {
+        setError('A senha precisa ter mais de 6 caracteres.');
+        return;
+      }
+
+      if (form.password !== form.confirmPassword) {
+        setError('A confirmação precisa ser igual à nova senha.');
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        const response = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            token: form.resetToken.trim(),
+            password: form.password
+          })
+        });
+
+        const payload = await response.json();
+
+        if (!response.ok) {
+          setError(payload.error || 'Não foi possível redefinir a senha.');
+          return;
+        }
+
+        setNotice('Senha redefinida com sucesso. Volte para o login e entre com a nova senha.');
+        setForm(INITIAL_FORM);
+      } catch (requestError) {
+        console.error('Password reset failed:', requestError);
+        setError('Não foi possível alcançar o serviço de redefinição de senha.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     if (mode === 'signup' && !allowPublicSignup) {
       setError('Public sign-up is disabled. Ask an administrator to create your account.');
@@ -238,20 +393,50 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
             )}
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-              <label className="block">
-                <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-secondary font-semibold">
-                  User ID
-                </span>
-                <div className="relative">
-                  <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
-                  <input
-                    value={form.userId}
-                    onChange={(event) => setForm((current) => ({ ...current, userId: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-12 pr-4 text-sm text-white outline-none transition focus:border-primary/40 focus:bg-white/[0.08]"
-                    placeholder="chemist_01"
-                  />
-                </div>
-              </label>
+              {(mode === 'forgot-password' || mode === 'reset-password') && (
+                <button
+                  type="button"
+                  onClick={() => resetForMode('login')}
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-secondary transition hover:text-white"
+                >
+                  <ArrowLeft size={16} />
+                  Back to sign in
+                </button>
+              )}
+
+              {mode !== 'reset-password' && (
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-secondary font-semibold">
+                    User ID
+                  </span>
+                  <div className="relative">
+                    <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+                    <input
+                      value={form.userId}
+                      onChange={(event) => setForm((current) => ({ ...current, userId: event.target.value }))}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-12 pr-4 text-sm text-white outline-none transition focus:border-primary/40 focus:bg-white/[0.08]"
+                      placeholder="chemist_01"
+                    />
+                  </div>
+                </label>
+              )}
+
+              {mode === 'reset-password' && (
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-secondary font-semibold">
+                    Reset Token
+                  </span>
+                  <div className="relative">
+                    <LockKeyhole size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+                    <input
+                      value={form.resetToken}
+                      onChange={(event) => setForm((current) => ({ ...current, resetToken: event.target.value }))}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-12 pr-4 text-sm text-white outline-none transition focus:border-primary/40 focus:bg-white/[0.08]"
+                      placeholder="Paste your reset token"
+                    />
+                  </div>
+                </label>
+              )}
 
               {mode === 'signup' && (
                 <label className="block">
@@ -270,25 +455,83 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
                 </label>
               )}
 
-              <label className="block">
-                <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-secondary font-semibold">
-                  Password
-                </span>
-                <div className="relative">
-                  <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
-                  <input
-                    type="password"
-                    value={form.password}
-                    onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-12 pr-4 text-sm text-white outline-none transition focus:border-primary/40 focus:bg-white/[0.08]"
-                    placeholder="More than 6 characters"
-                  />
+              {mode !== 'forgot-password' && (
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-secondary font-semibold">
+                    {mode === 'reset-password' ? 'New Password' : 'Password'}
+                  </span>
+                  <div className="relative">
+                    <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+                    <input
+                      type="password"
+                      value={form.password}
+                      onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-12 pr-4 text-sm text-white outline-none transition focus:border-primary/40 focus:bg-white/[0.08]"
+                      placeholder="More than 6 characters"
+                    />
+                  </div>
+                </label>
+              )}
+
+              {mode === 'reset-password' && (
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-secondary font-semibold">
+                    Confirm Password
+                  </span>
+                  <div className="relative">
+                    <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+                    <input
+                      type="password"
+                      value={form.confirmPassword}
+                      onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-12 pr-4 text-sm text-white outline-none transition focus:border-primary/40 focus:bg-white/[0.08]"
+                      placeholder="Repeat your new password"
+                    />
+                  </div>
+                </label>
+              )}
+
+              {mode === 'login' && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => resetForMode('forgot-password')}
+                    className="text-sm font-semibold text-secondary transition hover:text-white"
+                  >
+                    Forgot your password?
+                  </button>
                 </div>
-              </label>
+              )}
 
               {error && (
                 <div className="rounded-2xl border border-[#ffb4ab]/20 bg-[#ffb4ab]/10 px-4 py-3 text-sm text-[#ffddd8]">
                   {error}
+                </div>
+              )}
+
+              {notice && (
+                <div className="rounded-2xl border border-secondary/20 bg-secondary/10 px-4 py-3 text-sm text-secondary">
+                  {notice}
+                </div>
+              )}
+
+              {resetLink && (
+                <div className="space-y-3">
+                  <a
+                    href={resetLink}
+                    className="block rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary break-all transition hover:text-white"
+                  >
+                    {resetLink}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.hash = `#/reset-password?token=${encodeURIComponent(form.resetToken)}`;
+                    }}
+                    className="w-full rounded-2xl border border-secondary/20 bg-secondary/10 px-5 py-3 text-sm font-semibold text-secondary transition hover:bg-secondary/15 hover:text-white"
+                  >
+                    Redefinir senha agora
+                  </button>
                 </div>
               )}
 
@@ -297,7 +540,15 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
                 disabled={isSubmitting || isCheckingSignup}
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-secondary px-5 py-3.5 text-sm font-semibold text-[#03263a] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isSubmitting ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
+                {isSubmitting
+                  ? 'Please wait...'
+                  : mode === 'login'
+                    ? 'Sign In'
+                    : mode === 'signup'
+                      ? 'Create Account'
+                      : mode === 'forgot-password'
+                        ? 'Generate Reset Link'
+                        : 'Reset Password'}
               </button>
             </form>
           </motion.section>

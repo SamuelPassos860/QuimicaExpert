@@ -15,6 +15,7 @@ const listReportsQuery = `
     compound_name,
     cas_id,
     lambda_max,
+    solvent,
     source,
     epsilon_value,
     path_length_value,
@@ -39,6 +40,7 @@ const insertReportQuery = `
     compound_name,
     cas_id,
     lambda_max,
+    solvent,
     source,
     epsilon_value,
     path_length_value,
@@ -46,7 +48,7 @@ const insertReportQuery = `
     absorbance,
     generated_at
   )
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
   RETURNING
     id,
     report_id,
@@ -56,6 +58,7 @@ const insertReportQuery = `
     compound_name,
     cas_id,
     lambda_max,
+    solvent,
     source,
     epsilon_value,
     path_length_value,
@@ -76,6 +79,7 @@ async function ensureReportsSchema() {
       compound_name VARCHAR(255) NOT NULL,
       cas_id VARCHAR(100) NOT NULL,
       lambda_max VARCHAR(100) NOT NULL,
+      solvent VARCHAR(160) NOT NULL DEFAULT 'N/A',
       source VARCHAR(100) NOT NULL,
       epsilon_value DOUBLE PRECISION NOT NULL,
       path_length_value DOUBLE PRECISION NOT NULL,
@@ -84,6 +88,11 @@ async function ensureReportsSchema() {
       generated_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await pool.query(`
+    ALTER TABLE reports
+    ADD COLUMN IF NOT EXISTS solvent VARCHAR(160) NOT NULL DEFAULT 'N/A'
   `);
 
   await pool.query(`
@@ -112,6 +121,7 @@ function mapReportRow(row: ReportRow) {
     compoundName: row.compound_name,
     casId: row.cas_id,
     lambdaMax: row.lambda_max,
+    solvent: row.solvent,
     source: row.source,
     epsilonValue: parseChemicalNumber(row.epsilon_value),
     pathLengthValue: parseChemicalNumber(row.path_length_value),
@@ -139,6 +149,7 @@ export async function createReport(input: CreateReportInput) {
     input.compoundName,
     input.casId,
     input.lambdaMax,
+    input.solvent,
     input.source,
     input.epsilonValue,
     input.pathLengthValue,

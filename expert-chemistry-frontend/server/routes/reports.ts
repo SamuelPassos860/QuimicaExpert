@@ -45,6 +45,7 @@ router.post('/', async (request, response) => {
       compoundName: body.compoundName.trim(),
       casId: body.casId?.trim() || 'N/A',
       lambdaMax: body.lambdaMax?.trim() || 'N/A',
+      solvent: body.solvent?.trim() || 'N/A',
       source: body.source?.trim() || 'Manual',
       epsilonValue: Number(body.epsilonValue ?? 0),
       pathLengthValue: Number(body.pathLengthValue ?? 0),

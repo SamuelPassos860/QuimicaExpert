@@ -9,6 +9,7 @@ export function validateCompoundUpsert(body: CompoundUpsertBody): ValidationResu
   const nome = body.nome?.trim();
   const cas = body.cas?.trim() || 'S/CAS';
   const lambda_max = body.lambda_max?.trim() || 'N/A';
+  const solvent = body.solvent?.trim() || 'N/A';
   const fonte = body.fonte?.trim() || 'Manual';
   const epsilon_m_cm = Number(body.epsilon_m_cm ?? 0);
   const path_length_cm = Number(body.path_length_cm ?? 0);
@@ -41,6 +42,7 @@ export function validateCompoundUpsert(body: CompoundUpsertBody): ValidationResu
       nome,
       epsilon_m_cm,
       lambda_max,
+      solvent,
       fonte,
       path_length_cm,
       concentration_mol_l,

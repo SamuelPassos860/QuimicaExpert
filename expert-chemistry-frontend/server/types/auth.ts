@@ -23,6 +23,15 @@ export interface LoginBody {
   password: string;
 }
 
+export interface ForgotPasswordBody {
+  userId: string;
+}
+
+export interface ResetPasswordBody {
+  token: string;
+  password: string;
+}
+
 export interface UserRoleUpdateBody {
   role: UserRole;
 }

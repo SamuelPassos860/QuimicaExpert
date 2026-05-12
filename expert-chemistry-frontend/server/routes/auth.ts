@@ -2,16 +2,18 @@ import { Router } from 'express';
 import { createAuditLog } from '../services/audit.ts';
 import {
   createSessionForUser,
+  createPasswordResetTokenForUser,
   createUser,
   deleteSessionByToken,
   getUserForSessionToken,
   hasAnyUsers,
   isDuplicateUserIdError,
-  loginUser
+  loginUser,
+  resetPasswordWithToken
 } from '../services/auth.ts';
-import type { LoginBody, SignupBody } from '../types/auth.ts';
+import type { ForgotPasswordBody, LoginBody, ResetPasswordBody, SignupBody } from '../types/auth.ts';
 import { clearSessionCookie, getSessionTokenFromRequest, setSessionCookie } from '../utils/http.ts';
-import { validateLogin, validateSignup } from '../validators/auth.ts';
+import { validateForgotPassword, validateLogin, validateResetPassword, validateSignup } from '../validators/auth.ts';
 
 const router = Router();
 
@@ -90,6 +92,79 @@ router.post('/login', async (request, response) => {
   } catch (error) {
     console.error('Failed to log in user:', error);
     response.status(500).json({ error: 'Failed to log in user.' });
+  }
+});
+
+router.post('/forgot-password', async (request, response) => {
+  const validation = validateForgotPassword((request.body ?? {}) as ForgotPasswordBody);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  try {
+    const resetRequest = await createPasswordResetTokenForUser(validation.data!.userId);
+
+    if (resetRequest) {
+      await createAuditLog({
+        actorUserId: resetRequest.user.id,
+        actorUserIdentifier: resetRequest.user.userId,
+        actorFullName: resetRequest.user.fullName,
+        eventType: 'password_reset_requested',
+        resourceType: 'user',
+        resourceKey: resetRequest.user.userId,
+        metadata: {
+          expiresAt: resetRequest.expiresAt
+        }
+      });
+    }
+
+    const resetPath = resetRequest
+      ? `/#/reset-password?token=${encodeURIComponent(resetRequest.token)}`
+      : undefined;
+
+    response.json({
+      message: 'If this User ID exists, a password reset link has been prepared.',
+      resetPath,
+      resetToken: resetRequest?.token,
+      expiresAt: resetRequest?.expiresAt
+    });
+  } catch (error) {
+    console.error('Failed to request password reset:', error);
+    response.status(500).json({ error: 'Failed to request password reset.' });
+  }
+});
+
+router.post('/reset-password', async (request, response) => {
+  const validation = validateResetPassword((request.body ?? {}) as ResetPasswordBody);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  try {
+    const user = await resetPasswordWithToken(validation.data!.token, validation.data!.password);
+
+    if (!user) {
+      response.status(400).json({ error: 'Invalid or expired password reset token.' });
+      return;
+    }
+
+    await createAuditLog({
+      actorUserId: user.id,
+      actorUserIdentifier: user.userId,
+      actorFullName: user.fullName,
+      eventType: 'password_reset_completed',
+      resourceType: 'user',
+      resourceKey: user.userId
+    });
+
+    response.json({ message: 'Password reset successfully.' });
+  } catch (error) {
+    console.error('Failed to reset password:', error);
+    response.status(500).json({ error: 'Failed to reset password.' });
   }
 });
 

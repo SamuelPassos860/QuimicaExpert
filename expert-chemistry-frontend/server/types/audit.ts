@@ -3,6 +3,8 @@ import type { CreateReportBody } from './reports.ts';
 export const AUDIT_EVENT_TYPES = [
   'login',
   'logout',
+  'password_reset_requested',
+  'password_reset_completed',
   'compound_saved',
   'compound_deleted',
   'pdf_exported'
@@ -10,6 +12,7 @@ export const AUDIT_EVENT_TYPES = [
 
 export const AUDIT_RESOURCE_TYPES = [
   'session',
+  'user',
   'compound',
   'spectrophotometry_report'
 ] as const;
