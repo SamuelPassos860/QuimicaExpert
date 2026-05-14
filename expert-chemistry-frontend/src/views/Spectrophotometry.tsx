@@ -14,6 +14,7 @@ interface SavedCompoundRecord {
   name: string;
   epsilon: number;
   lambdaMax: string;
+  solvent: string;
   source: SourceType;
   pathLength: number;
   concentration: number;
@@ -27,6 +28,7 @@ interface SpectralRecord {
   cas: string;
   epsilon: number;
   lambdaMax: string;
+  solvent: string;
   source: SourceType;
 }
 
@@ -35,6 +37,7 @@ interface ApiCompoundRecord {
   nome: string;
   epsilon_m_cm: number | string | null;
   lambda_max: string | null;
+  solvent?: string | null;
   fonte: string | null;
   path_length_cm?: number | string | null;
   concentration_mol_l?: number | string | null;
@@ -47,6 +50,7 @@ interface ApiSpectralRecord {
   cas?: string | null;
   absorption_wavelength_nm: number | string | null;
   molar_extinction_coefficient: number | string | null;
+  absorption_solvent: string | null;
 }
 
 interface SpectrophotometryProps {
@@ -57,6 +61,18 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('pt-BR', {
     maximumFractionDigits: 4
   }).format(value);
+}
+
+function formatWavelengthMax(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed === 'N/A') {
+    return 'N/A';
+  }
+
+  return /\bnm\b/i.test(trimmed) || /nanometer/i.test(trimmed)
+    ? trimmed.replace(/\bnm\b/gi, 'nanometers (nm)')
+    : `${trimmed} nanometers (nm)`;
 }
 
 function formatDateTime(value: string) {
@@ -125,6 +141,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [casId, setCasId] = useState('');
   const [epsilon, setEpsilon] = useState('0');
   const [lambdaMax, setLambdaMax] = useState('N/A');
+  const [solvent, setSolvent] = useState('N/A');
   const [source, setSource] = useState<SourceType>('Manual');
   const [pathLength, setPathLength] = useState('1');
   const [concentration, setConcentration] = useState('0');
@@ -157,6 +174,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
             cas: record.cas || '',
             epsilon: Number(record.molar_extinction_coefficient ?? 0),
             lambdaMax: record.absorption_wavelength_nm ? String(record.absorption_wavelength_nm) : 'N/A',
+            solvent: record.absorption_solvent || 'N/A',
             source: 'PhotochemCAD' as const
           }))
           .sort((left, right) => {
@@ -213,6 +231,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
           name: compound.nome,
           epsilon: Number(compound.epsilon_m_cm ?? 0),
           lambdaMax: compound.lambda_max || 'N/A',
+          solvent: compound.solvent || 'N/A',
           source: normalizeSource(compound.fonte),
           pathLength: Number(compound.path_length_cm ?? 0),
           concentration: Number(compound.concentration_mol_l ?? 0),
@@ -261,6 +280,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         name: compound.nome,
         epsilon: Number(compound.epsilon_m_cm ?? 0),
         lambdaMax: compound.lambda_max || 'N/A',
+        solvent: compound.solvent || 'N/A',
         source: normalizeSource(compound.fonte),
         pathLength: Number(compound.path_length_cm ?? 0),
         concentration: Number(compound.concentration_mol_l ?? 0),
@@ -290,6 +310,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
     setCasId(record.cas);
     setEpsilon(String(record.epsilon));
     setLambdaMax(record.lambdaMax);
+    setSolvent(record.solvent);
     setSource(record.source);
   };
 
@@ -299,6 +320,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
     setCasId(compound.cas);
     setEpsilon(String(compound.epsilon));
     setLambdaMax(compound.lambdaMax);
+    setSolvent(compound.solvent);
     setSource(compound.source);
     setPathLength(String(compound.pathLength || 0));
     setConcentration(String(compound.concentration || 0));
@@ -312,6 +334,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         compoundName: compoundName || 'Not identified',
         casId: casId || 'N/A',
         lambdaMax: lambdaMax || 'N/A',
+        solvent: solvent || 'N/A',
         source,
         epsilonValue,
         pathLengthValue,
@@ -327,6 +350,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
     setCasId('');
     setEpsilon('0');
     setLambdaMax('N/A');
+    setSolvent('N/A');
     setSource('Manual');
     setSaveMessage(null);
     setSaveError(null);
@@ -354,6 +378,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
           nome: compoundName.trim(),
           epsilon_m_cm: epsilonValue,
           lambda_max: lambdaMax.trim() || 'N/A',
+          solvent: solvent.trim() || 'N/A',
           fonte: source,
           path_length_cm: pathLengthValue,
           concentration_mol_l: concentrationValue,
@@ -430,6 +455,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         compoundName: compound.name,
         casId: compound.cas || 'N/A',
         lambdaMax: compound.lambdaMax || 'N/A',
+        solvent: compound.solvent || 'N/A',
         source: compound.source,
         epsilonValue: compound.epsilon,
         pathLengthValue: compound.pathLength,
@@ -694,7 +720,11 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                     </div>
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">lambda max</p>
-                      <p className="text-white mt-1 font-semibold">{record.lambdaMax} nm</p>
+                      <p className="text-white mt-1 font-semibold leading-relaxed break-words">{formatWavelengthMax(record.lambdaMax)}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0 sm:col-span-2">
+                      <p className="text-white/30 font-mono uppercase tracking-widest">solvent</p>
+                      <p className="text-white mt-1 font-semibold leading-relaxed break-words">{record.solvent}</p>
                     </div>
                   </div>
                 </button>
@@ -727,8 +757,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                   <p className="text-xl font-display font-bold text-white mt-2">
                     {compoundName || 'Select a compound from the spectral library'}
                   </p>
-                  <p className="text-sm text-white/50 mt-2">
-                    CAS {casId || 'N/A'} - Lambda Max {lambdaMax || 'N/A'} nm
+                  <p className="text-sm text-white/50 mt-2 leading-relaxed break-words">
+                    CAS {casId || 'N/A'} - Lambda Max {formatWavelengthMax(lambdaMax)}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 text-sm">
                     <div className="rounded-xl bg-[#08101f]/65 border border-white/8 p-3">
@@ -738,6 +768,14 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                     <div className="rounded-xl bg-[#08101f]/65 border border-white/8 p-3">
                       <p className="text-white/30 font-mono uppercase tracking-widest">source</p>
                       <p className="text-white mt-2 font-semibold">{source}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#08101f]/65 border border-white/8 p-3 sm:col-span-2">
+                      <p className="text-white/30 font-mono uppercase tracking-widest">lambda max</p>
+                      <p className="text-white mt-2 font-semibold leading-relaxed break-words">{formatWavelengthMax(lambdaMax)}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#08101f]/65 border border-white/8 p-3 sm:col-span-2">
+                      <p className="text-white/30 font-mono uppercase tracking-widest">solvent</p>
+                      <p className="text-white mt-2 font-semibold leading-relaxed break-words">{solvent}</p>
                     </div>
                   </div>
                 </div>
@@ -853,9 +891,13 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                   <p className="text-white/30 font-mono uppercase tracking-widest">CAS</p>
                   <p className="text-white mt-2 font-semibold">{casId || 'N/A'}</p>
                 </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Lambda Max</p>
-                  <p className="text-white mt-2 font-semibold">{lambdaMax || 'N/A'}</p>
+                  <p className="text-white mt-2 font-semibold leading-relaxed break-words">{formatWavelengthMax(lambdaMax)}</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Solvent</p>
+                  <p className="text-white mt-2 font-semibold leading-relaxed break-words">{solvent || 'N/A'}</p>
                 </div>
               </div>
 
@@ -865,7 +907,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 <p>Formula: A = {formulaPreview}</p>
                 <p className="mt-3">Compound: {compoundName || 'Not identified'}</p>
                 <p>Epsilon: {formatNumber(epsilonValue)} M^-1 cm^-1</p>
-                <p>Lambda max: {lambdaMax || 'N/A'} nm</p>
+                <p>Lambda max: {formatWavelengthMax(lambdaMax)}</p>
+                <p>Solvent: {solvent || 'N/A'}</p>
                 <p>Source: {source}</p>
                 <p>Absorbance: {formatNumber(absorbance)}</p>
               </div>
@@ -968,9 +1011,9 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                     <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
                     <p className="text-white mt-2 font-semibold">{formatNumber(compound.epsilon)}</p>
                   </div>
-                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 sm:col-span-2">
                     <p className="text-white/30 font-mono uppercase tracking-widest">lambda max</p>
-                    <p className="text-white mt-2 font-semibold">{compound.lambdaMax} nm</p>
+                    <p className="text-white mt-2 font-semibold leading-relaxed break-words">{formatWavelengthMax(compound.lambdaMax)}</p>
                   </div>
                   <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                     <p className="text-white/30 font-mono uppercase tracking-widest">path length</p>
@@ -979,6 +1022,10 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                   <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                     <p className="text-white/30 font-mono uppercase tracking-widest">concentration</p>
                     <p className="text-white mt-2 font-semibold">{formatNumber(compound.concentration)} mol/L</p>
+                  </div>
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 sm:col-span-2">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">solvent</p>
+                    <p className="text-white mt-2 font-semibold">{compound.solvent}</p>
                   </div>
                   <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 sm:col-span-2">
                     <p className="text-white/30 font-mono uppercase tracking-widest">absorbance</p>

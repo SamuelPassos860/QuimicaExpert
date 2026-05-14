@@ -6,7 +6,7 @@ import { toLikePattern } from '../utils/http.ts';
 let schemaReadyPromise: Promise<void> | null = null;
 
 const listCompoundsQuery = `
-  SELECT cas, nome, epsilon_m_cm, lambda_max, fonte, path_length_cm, concentration_mol_l, absorbance, saved_at
+  SELECT cas, nome, epsilon_m_cm, lambda_max, solvent, fonte, path_length_cm, concentration_mol_l, absorbance, saved_at
   FROM compounds
   WHERE ($1 = '' OR cas ILIKE $1 OR nome ILIKE $1)
   ORDER BY saved_at DESC NULLS LAST, nome ASC
@@ -14,19 +14,20 @@ const listCompoundsQuery = `
 `;
 
 const upsertCompoundQuery = `
-  INSERT INTO compounds (cas, nome, epsilon_m_cm, lambda_max, fonte, path_length_cm, concentration_mol_l, absorbance, saved_at)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+  INSERT INTO compounds (cas, nome, epsilon_m_cm, lambda_max, solvent, fonte, path_length_cm, concentration_mol_l, absorbance, saved_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
   ON CONFLICT (cas)
   DO UPDATE SET
     nome = EXCLUDED.nome,
     epsilon_m_cm = EXCLUDED.epsilon_m_cm,
     lambda_max = EXCLUDED.lambda_max,
+    solvent = EXCLUDED.solvent,
     fonte = EXCLUDED.fonte,
     path_length_cm = EXCLUDED.path_length_cm,
     concentration_mol_l = EXCLUDED.concentration_mol_l,
     absorbance = EXCLUDED.absorbance,
     saved_at = NOW()
-  RETURNING cas, nome, epsilon_m_cm, lambda_max, fonte, path_length_cm, concentration_mol_l, absorbance, saved_at;
+  RETURNING cas, nome, epsilon_m_cm, lambda_max, solvent, fonte, path_length_cm, concentration_mol_l, absorbance, saved_at;
 `;
 
 const deleteCompoundQuery = `
@@ -42,6 +43,11 @@ const findCompoundByCasQuery = `
 `;
 
 async function ensureCompoundsSchema() {
+  await pool.query(`
+    ALTER TABLE compounds
+    ADD COLUMN IF NOT EXISTS solvent VARCHAR(160) NOT NULL DEFAULT 'N/A'
+  `);
+
   await pool.query(`
     ALTER TABLE compounds
     ADD COLUMN IF NOT EXISTS path_length_cm DOUBLE PRECISION NOT NULL DEFAULT 0
@@ -94,6 +100,7 @@ export async function saveCompound(input: CompoundUpsertInput) {
     input.nome,
     input.epsilon_m_cm,
     input.lambda_max,
+    input.solvent,
     input.fonte,
     input.path_length_cm,
     input.concentration_mol_l,

@@ -16,6 +16,18 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
+function formatWavelengthMax(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed === 'N/A') {
+    return 'N/A';
+  }
+
+  return /\bnm\b/i.test(trimmed) || /nanometer/i.test(trimmed)
+    ? trimmed.replace(/\bnm\b/gi, 'nanometers (nm)')
+    : `${trimmed} nanometers (nm)`;
+}
+
 export function buildReportId(casId: string, generatedAt: Date) {
   const timestamp = generatedAt
     .toISOString()
@@ -36,6 +48,7 @@ export function buildReportPayload(
     compoundName: string;
     casId: string;
     lambdaMax: string;
+    solvent: string;
     source: string;
     epsilonValue: number;
     pathLengthValue: number;
@@ -53,6 +66,7 @@ export function buildReportPayload(
     compoundName: values.compoundName || 'Not identified',
     casId: values.casId || 'N/A',
     lambdaMax: values.lambdaMax || 'N/A',
+    solvent: values.solvent || 'N/A',
     source: values.source,
     epsilonValue: values.epsilonValue,
     pathLengthValue: values.pathLengthValue,
@@ -77,7 +91,8 @@ export function openPrintableReport(payload: ReportPayload) {
   const formulaResult = `A = ${formatNumber(payload.absorbance)}`;
   const safeCompoundName = escapeHtml(payload.compoundName);
   const safeCasId = escapeHtml(payload.casId);
-  const safeLambdaMax = escapeHtml(payload.lambdaMax);
+  const safeLambdaMax = escapeHtml(formatWavelengthMax(payload.lambdaMax));
+  const safeSolvent = escapeHtml(payload.solvent || 'N/A');
   const safeSource = escapeHtml(payload.source);
   const safeGeneratedAt = escapeHtml(payload.generatedAt);
   const safeGeneratedByName = escapeHtml(payload.generatedByName);
@@ -298,7 +313,9 @@ export function openPrintableReport(payload: ReportPayload) {
             font-size: 16px;
             font-weight: 800;
             color: #101b33;
-            white-space: nowrap;
+            max-width: 48%;
+            text-align: right;
+            overflow-wrap: anywhere;
           }
           .source-card {
             padding: 14px 16px;
@@ -533,6 +550,8 @@ export function openPrintableReport(payload: ReportPayload) {
               gap: 10px;
             }
             .parameter-card {
+              align-items: flex-start;
+              flex-direction: column;
               padding: 12px 14px;
             }
             .parameter-icon {
@@ -542,6 +561,8 @@ export function openPrintableReport(payload: ReportPayload) {
             }
             .parameter-value {
               font-size: 15px;
+              max-width: 100%;
+              text-align: left;
             }
             .source-card {
               padding: 12px 14px;
@@ -662,6 +683,10 @@ export function openPrintableReport(payload: ReportPayload) {
                   <p class="mini-label">CAS Number</p>
                   <p class="mini-value">${safeCasId}</p>
                 </div>
+                <div class="details-cell full">
+                  <p class="mini-label">Analysis Solvent</p>
+                  <p class="mini-value">${safeSolvent}</p>
+                </div>
               </div>
             </div>
 
@@ -680,7 +705,7 @@ export function openPrintableReport(payload: ReportPayload) {
                     <div class="parameter-icon">l</div>
                     <div>Wavelength Max (Lambda max)</div>
                   </div>
-                  <div class="parameter-value">${safeLambdaMax} nm</div>
+                  <div class="parameter-value">${safeLambdaMax}</div>
                 </div>
                 <div class="source-card">
                   <p class="mini-label">Reference Source</p>

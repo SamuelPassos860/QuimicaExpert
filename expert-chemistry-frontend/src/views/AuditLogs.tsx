@@ -5,6 +5,8 @@ import type { AuditLog, AuditLogEventType, AuditLogFilters } from '../types/audi
 const EVENT_TYPE_LABELS: Record<AuditLogEventType, string> = {
   login: 'User Login',
   logout: 'User Logout',
+  password_reset_requested: 'Password Reset Requested',
+  password_reset_completed: 'Password Reset Completed',
   compound_saved: 'Compound Saved',
   compound_deleted: 'Compound Deleted',
   pdf_exported: 'PDF Exported'
@@ -124,6 +126,8 @@ export default function AuditLogs() {
               <option value="">All events</option>
               <option value="login">Login</option>
               <option value="logout">Logout</option>
+              <option value="password_reset_requested">Password reset requested</option>
+              <option value="password_reset_completed">Password reset completed</option>
               <option value="compound_saved">Compound saved</option>
               <option value="compound_deleted">Compound deleted</option>
               <option value="pdf_exported">PDF exported</option>

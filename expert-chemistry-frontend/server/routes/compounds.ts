@@ -44,6 +44,7 @@ router.post('/', async (request, response) => {
           compoundName: compound.nome,
           epsilon: compound.epsilon_m_cm,
           lambdaMax: compound.lambda_max,
+          solvent: compound.solvent,
           pathLength: compound.path_length_cm,
           concentration: compound.concentration_mol_l,
           absorbance: compound.absorbance,

@@ -19,6 +19,18 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
+function formatWavelengthMax(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed === 'N/A') {
+    return 'N/A';
+  }
+
+  return /\bnm\b/i.test(trimmed) || /nanometer/i.test(trimmed)
+    ? trimmed.replace(/\bnm\b/gi, 'nanometers (nm)')
+    : `${trimmed} nanometers (nm)`;
+}
+
 export default function Reports({ currentUser }: ReportsProps) {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -214,9 +226,13 @@ export default function Reports({ currentUser }: ReportsProps) {
                     <p className="text-white/30 font-mono uppercase tracking-widest">Absorbance</p>
                     <p className="text-white mt-2 font-semibold">{formatNumber(report.absorbance)}</p>
                   </div>
-                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 sm:col-span-2">
                     <p className="text-white/30 font-mono uppercase tracking-widest">Lambda max</p>
-                    <p className="text-white mt-2 font-semibold">{report.lambdaMax} nm</p>
+                    <p className="text-white mt-2 font-semibold leading-relaxed break-words">{formatWavelengthMax(report.lambdaMax)}</p>
+                  </div>
+                  <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 sm:col-span-2">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">Solvent</p>
+                    <p className="text-white mt-2 font-semibold leading-relaxed break-words">{report.solvent || 'N/A'}</p>
                   </div>
                 </div>
               </div>

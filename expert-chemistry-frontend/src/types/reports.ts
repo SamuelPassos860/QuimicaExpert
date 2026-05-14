@@ -3,6 +3,7 @@ export interface ReportPayload {
   compoundName: string;
   casId: string;
   lambdaMax: string;
+  solvent: string;
   source: string;
   epsilonValue: number;
   pathLengthValue: number;

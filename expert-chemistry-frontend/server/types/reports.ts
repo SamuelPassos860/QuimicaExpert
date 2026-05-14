@@ -7,6 +7,7 @@ export interface ReportRow {
   compound_name: string;
   cas_id: string;
   lambda_max: string;
+  solvent: string;
   source: string;
   epsilon_value: string | number;
   path_length_value: string | number;
@@ -21,6 +22,7 @@ export interface CreateReportBody {
   compoundName?: string;
   casId?: string;
   lambdaMax?: string;
+  solvent?: string;
   source?: string;
   epsilonValue?: number | string | null;
   pathLengthValue?: number | string | null;
@@ -39,6 +41,7 @@ export interface CreateReportInput {
   compoundName: string;
   casId: string;
   lambdaMax: string;
+  solvent: string;
   source: string;
   epsilonValue: number;
   pathLengthValue: number;
