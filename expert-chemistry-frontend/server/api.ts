@@ -1,4 +1,4 @@
-import app, { initializeServer } from './app';
+import app, { initializeServer } from './app.js';
 
 const port = Number(process.env.API_PORT || 3001);
 

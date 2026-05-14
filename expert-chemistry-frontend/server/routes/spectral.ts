@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { listSpectralData } from '../services/spectral';
-import { getSearchTerm } from '../utils/http';
+import { listSpectralData } from '../services/spectral.js';
+import { getSearchTerm } from '../utils/http.js';
 
 const router = Router();
 

@@ -1,4 +1,4 @@
-import type { CompoundUpsertBody, CompoundUpsertInput } from '../types/chemistry';
+import type { CompoundUpsertBody, CompoundUpsertInput } from '../types/chemistry.js';
 
 interface ValidationResult {
   data?: CompoundUpsertInput;

@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { createAuditLog } from '../services/audit';
-import { deleteCompound, findCompoundByCas, listCompounds, saveCompound } from '../services/compounds';
-import type { CompoundUpsertBody } from '../types/chemistry';
-import { getSearchTerm } from '../utils/http';
-import { validateCompoundUpsert } from '../validators/compounds';
+import { createAuditLog } from '../services/audit.js';
+import { deleteCompound, findCompoundByCas, listCompounds, saveCompound } from '../services/compounds.js';
+import type { CompoundUpsertBody } from '../types/chemistry.js';
+import { getSearchTerm } from '../utils/http.js';
+import { validateCompoundUpsert } from '../validators/compounds.js';
 
 const router = Router();
 

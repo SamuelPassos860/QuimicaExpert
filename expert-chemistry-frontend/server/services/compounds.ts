@@ -1,7 +1,7 @@
-import { pool } from '../db';
-import type { CompoundDeleteTarget, CompoundRow, CompoundUpsertInput } from '../types/chemistry';
-import { parseChemicalNumber } from '../utils/chemistry';
-import { toLikePattern } from '../utils/http';
+import { pool } from '../db.js';
+import type { CompoundDeleteTarget, CompoundRow, CompoundUpsertInput } from '../types/chemistry.js';
+import { parseChemicalNumber } from '../utils/chemistry.js';
+import { toLikePattern } from '../utils/http.js';
 
 let schemaReadyPromise: Promise<void> | null = null;
 

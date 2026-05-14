@@ -1,7 +1,7 @@
-import { pool } from '../db';
-import type { SpectralRow } from '../types/chemistry';
-import { parseChemicalNumber } from '../utils/chemistry';
-import { toLikePattern } from '../utils/http';
+import { pool } from '../db.js';
+import type { SpectralRow } from '../types/chemistry.js';
+import { parseChemicalNumber } from '../utils/chemistry.js';
+import { toLikePattern } from '../utils/http.js';
 
 const listSpectralDataQuery = `
   SELECT compound_name, absorption_wavelength_nm, molar_extinction_coefficient, absorption_solvent, structure_file

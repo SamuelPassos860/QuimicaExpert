@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { loadDatabaseUrl } from './config';
+import { loadDatabaseUrl } from './config.js';
 
 let poolInstance: Pool | null = null;
 

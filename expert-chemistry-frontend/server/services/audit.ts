@@ -1,11 +1,11 @@
-import { pool } from '../db';
-import { initializeAuthSchema } from './auth';
+import { pool } from '../db.js';
+import { initializeAuthSchema } from './auth.js';
 import type {
   AuditLogRow,
   CreateAuditLogInput,
   ListAuditLogsFilters
-} from '../types/audit';
-import { toLikePattern } from '../utils/http';
+} from '../types/audit.js';
+import { toLikePattern } from '../utils/http.js';
 
 let schemaReadyPromise: Promise<void> | null = null;
 

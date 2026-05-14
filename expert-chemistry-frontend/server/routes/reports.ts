@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { createReport, listReports } from '../services/reports';
-import type { CreateReportBody } from '../types/reports';
-import { getSearchTerm } from '../utils/http';
+import { createReport, listReports } from '../services/reports.js';
+import type { CreateReportBody } from '../types/reports.js';
+import { getSearchTerm } from '../utils/http.js';
 
 const router = Router();
 
