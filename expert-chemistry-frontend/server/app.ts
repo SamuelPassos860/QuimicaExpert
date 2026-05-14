@@ -13,6 +13,7 @@ import { initializeReportsSchema } from './services/reports.ts';
 import spectralRouter from './routes/spectral.ts';
 
 let startupPromise: Promise<void> | null = null;
+const HEALTH_PATHS = new Set(['/health', '/api/health']);
 
 export function initializeServer() {
   if (!startupPromise) {
@@ -37,7 +38,7 @@ app.set('trust proxy', 1);
 app.use(express.json());
 
 app.use((request, response, next) => {
-  if (request.path === '/api/health') {
+  if (HEALTH_PATHS.has(request.path)) {
     next();
     return;
   }
@@ -47,14 +48,14 @@ app.use((request, response, next) => {
     .catch((error) => next(error));
 });
 
-app.use('/api/health', healthRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
-app.use('/api/audit', requireAuth, auditRouter);
-app.use('/api/dashboard', requireAuth, dashboardRouter);
-app.use('/api/compounds', requireAuth, compoundsRouter);
-app.use('/api/reports', requireAuth, reportsRouter);
-app.use('/api/spectral-data', requireAuth, spectralRouter);
+app.use(['/health', '/api/health'], healthRouter);
+app.use(['/auth', '/api/auth'], authRouter);
+app.use(['/admin', '/api/admin'], requireAuth, requireAdmin, adminRouter);
+app.use(['/audit', '/api/audit'], requireAuth, auditRouter);
+app.use(['/dashboard', '/api/dashboard'], requireAuth, dashboardRouter);
+app.use(['/compounds', '/api/compounds'], requireAuth, compoundsRouter);
+app.use(['/reports', '/api/reports'], requireAuth, reportsRouter);
+app.use(['/spectral-data', '/api/spectral-data'], requireAuth, spectralRouter);
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled API error:', error);
