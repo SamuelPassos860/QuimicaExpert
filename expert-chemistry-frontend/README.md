@@ -1,20 +1,23 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/de628c89-8d22-4387-b55c-7ab723895cd3
+# Run Expert Chemistry
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Add `DATABASE_URL` to the root `.env` file:
+   `export DATABASE_URL="postgresql://user:password@host/database?sslmode=require"`
+3. In the first terminal, start the frontend:
    `npm run dev`
+4. In a second terminal, start the API:
+   `npm run dev:api`
+
+The frontend runs on `http://localhost:3000` and proxies `/api` requests to the Express API on `http://localhost:3001`.
+The API health check should respond at `http://localhost:3001/api/health`.
+
+If PowerShell blocks npm script execution on your machine, use:
+- `cmd /c npm run dev`
+- `cmd /c npm run dev:api`
+
