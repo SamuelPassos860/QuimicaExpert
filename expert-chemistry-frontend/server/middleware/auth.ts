@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
-import { getSessionTokenFromRequest } from '../utils/http.ts';
-import { getUserForSessionToken } from '../services/auth.ts';
+import { getSessionTokenFromRequest } from '../utils/http';
+import { getUserForSessionToken } from '../services/auth';
 
 export const requireAuth: RequestHandler = async (request, response, next) => {
   try {

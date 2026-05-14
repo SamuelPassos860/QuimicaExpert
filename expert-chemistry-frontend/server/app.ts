@@ -1,16 +1,16 @@
 import express from 'express';
-import adminRouter from './routes/admin.ts';
-import auditRouter from './routes/audit.ts';
-import authRouter from './routes/auth.ts';
-import compoundsRouter from './routes/compounds.ts';
-import dashboardRouter from './routes/dashboard.ts';
-import healthRouter from './routes/health.ts';
-import { requireAdmin, requireAuth } from './middleware/auth.ts';
-import reportsRouter from './routes/reports.ts';
-import { initializeAuditSchema } from './services/audit.ts';
-import { initializeAuthSchema } from './services/auth.ts';
-import { initializeReportsSchema } from './services/reports.ts';
-import spectralRouter from './routes/spectral.ts';
+import adminRouter from './routes/admin';
+import auditRouter from './routes/audit';
+import authRouter from './routes/auth';
+import compoundsRouter from './routes/compounds';
+import dashboardRouter from './routes/dashboard';
+import healthRouter from './routes/health';
+import { requireAdmin, requireAuth } from './middleware/auth';
+import reportsRouter from './routes/reports';
+import { initializeAuditSchema } from './services/audit';
+import { initializeAuthSchema } from './services/auth';
+import { initializeReportsSchema } from './services/reports';
+import spectralRouter from './routes/spectral';
 
 let startupPromise: Promise<void> | null = null;
 const HEALTH_PATHS = new Set(['/health', '/api/health']);

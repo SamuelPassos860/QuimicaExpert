@@ -1,7 +1,7 @@
-import { pool } from '../db.ts';
-import type { CreateReportInput, ReportRow } from '../types/reports.ts';
-import { parseChemicalNumber } from '../utils/chemistry.ts';
-import { toLikePattern } from '../utils/http.ts';
+import { pool } from '../db';
+import type { CreateReportInput, ReportRow } from '../types/reports';
+import { parseChemicalNumber } from '../utils/chemistry';
+import { toLikePattern } from '../utils/http';
 
 let schemaReadyPromise: Promise<void> | null = null;
 

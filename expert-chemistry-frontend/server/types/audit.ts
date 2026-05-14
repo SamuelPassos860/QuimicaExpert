@@ -1,4 +1,4 @@
-import type { CreateReportBody } from './reports.ts';
+import type { CreateReportBody } from './reports';
 
 export const AUDIT_EVENT_TYPES = [
   'login',

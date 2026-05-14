@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { pool } from '../db.ts';
-import type { AuthUser, UserRole } from '../types/auth.ts';
-import { hashPassword, verifyPassword } from '../utils/password.ts';
-import { getSessionMaxAgeMs } from '../utils/http.ts';
+import { pool } from '../db';
+import type { AuthUser, UserRole } from '../types/auth';
+import { hashPassword, verifyPassword } from '../utils/password';
+import { getSessionMaxAgeMs } from '../utils/http';
 
 interface UserRow {
   id: number;

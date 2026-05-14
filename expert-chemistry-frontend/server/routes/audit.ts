@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { createAuditLog } from '../services/audit.ts';
-import type { ReportExportAuditBody } from '../types/audit.ts';
+import { createAuditLog } from '../services/audit';
+import type { ReportExportAuditBody } from '../types/audit';
 
 const router = Router();
 

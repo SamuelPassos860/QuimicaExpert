@@ -6,7 +6,7 @@ import type {
   SignupBody,
   UserRole,
   UserRoleUpdateBody
-} from '../types/auth.ts';
+} from '../types/auth';
 
 const MIN_PASSWORD_LENGTH = 7;
 

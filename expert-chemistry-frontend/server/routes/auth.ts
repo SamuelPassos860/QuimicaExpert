@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createAuditLog } from '../services/audit.ts';
+import { createAuditLog } from '../services/audit';
 import {
   createSessionForUser,
   createPasswordResetTokenForUser,
@@ -10,10 +10,10 @@ import {
   isDuplicateUserIdError,
   loginUser,
   resetPasswordWithToken
-} from '../services/auth.ts';
-import type { ForgotPasswordBody, LoginBody, ResetPasswordBody, SignupBody } from '../types/auth.ts';
-import { clearSessionCookie, getSessionTokenFromRequest, setSessionCookie } from '../utils/http.ts';
-import { validateForgotPassword, validateLogin, validateResetPassword, validateSignup } from '../validators/auth.ts';
+} from '../services/auth';
+import type { ForgotPasswordBody, LoginBody, ResetPasswordBody, SignupBody } from '../types/auth';
+import { clearSessionCookie, getSessionTokenFromRequest, setSessionCookie } from '../utils/http';
+import { validateForgotPassword, validateLogin, validateResetPassword, validateSignup } from '../validators/auth';
 
 const router = Router();
 
