@@ -145,6 +145,9 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [source, setSource] = useState<SourceType>('Manual');
   const [pathLength, setPathLength] = useState('1');
   const [concentration, setConcentration] = useState('0');
+  const [calcMode, setCalcMode] = useState<'absorbance' | 'concentration'>('absorbance');
+  const [sampleAbsorbance, setSampleAbsorbance] = useState('0');
+  const [blankAbsorbance, setBlankAbsorbance] = useState('0');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -299,10 +302,27 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const epsilonValue = Number.parseFloat(epsilon) || 0;
   const pathLengthValue = Number.parseFloat(pathLength) || 0;
   const concentrationValue = Number.parseFloat(concentration) || 0;
-  const absorbance = epsilonValue * pathLengthValue * concentrationValue;
+  const sampleAbsValue = Number.parseFloat(sampleAbsorbance) || 0;
+  const blankAbsValue = Number.parseFloat(blankAbsorbance) || 0;
+
+  // Lógica da Lei de Beer-Lambert
+  const effectiveAbsorbance = calcMode === 'absorbance' 
+    ? epsilonValue * pathLengthValue * concentrationValue 
+    : sampleAbsValue - blankAbsValue;
+
+  const calculatedConcentration = (calcMode === 'concentration' && epsilonValue * pathLengthValue !== 0)
+    ? effectiveAbsorbance / (epsilonValue * pathLengthValue)
+    : concentrationValue;
+
+  const absorbance = effectiveAbsorbance;
+  const formulaPreview = calcMode === 'absorbance'
+    ? `${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)} x ${formatNumber(concentrationValue)}`
+    : `(${formatNumber(sampleAbsValue)} - ${formatNumber(blankAbsValue)}) / (${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)})`;
+
   const hasSelectedCompound = compoundName.trim().length > 0;
-  const hasCalculationInputs = pathLengthValue > 0 && concentrationValue > 0;
-  const formulaPreview = `${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)} x ${formatNumber(concentrationValue)}`;
+  const hasCalculationInputs = calcMode === 'absorbance' 
+    ? (pathLengthValue > 0 && concentrationValue > 0)
+    : (pathLengthValue > 0 && sampleAbsValue > 0);
 
   const applySpectralRecord = (record: SpectralRecord) => {
     setSelectedSpectralRecordId(record.id);
@@ -338,8 +358,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         source,
         epsilonValue,
         pathLengthValue,
-        concentrationValue,
-        absorbance
+        concentrationValue: calcMode === 'concentration' ? calculatedConcentration : concentrationValue,
+        absorbance: effectiveAbsorbance
       },
       overrides
     );
@@ -381,7 +401,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
           solvent: solvent.trim() || 'N/A',
           fonte: source,
           path_length_cm: pathLengthValue,
-          concentration_mol_l: concentrationValue,
+          concentration_mol_l: calcMode === 'concentration' ? calculatedConcentration : concentrationValue,
           absorbance
         })
       });
@@ -750,6 +770,25 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 </div>
               </div>
 
+              <div className="flex p-1 rounded-xl bg-white/[0.03] border border-white/10 mb-6">
+                <button
+                  onClick={() => setCalcMode('absorbance')}
+                  className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                    calcMode === 'absorbance' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  Find Absorbance
+                </button>
+                <button
+                  onClick={() => setCalcMode('concentration')}
+                  className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                    calcMode === 'concentration' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  Find Concentration
+                </button>
+              </div>
+
               <div className="space-y-5">
                 <div className="rounded-2xl border border-primary/20 bg-primary/8 px-4 py-4">
                   <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-primary font-bold">
@@ -792,17 +831,43 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                     className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
                   />
                 </label>
-                <label className="space-y-2 block">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Concentration (mol/L)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={concentration}
-                    onChange={(event) => setConcentration(event.target.value)}
-                    className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                  />
-                </label>
+
+                {calcMode === 'absorbance' ? (
+                  <label className="space-y-2 block">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Concentration (mol/L)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={concentration}
+                      onChange={(event) => setConcentration(event.target.value)}
+                      className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                    />
+                  </label>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="space-y-2 block">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Sample Absorbance</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={sampleAbsorbance}
+                        onChange={(event) => setSampleAbsorbance(event.target.value)}
+                        className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                      />
+                    </label>
+                    <label className="space-y-2 block">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Blank (Baseline)</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={blankAbsorbance}
+                        onChange={(event) => setBlankAbsorbance(event.target.value)}
+                        className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="mt-8 rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
@@ -812,10 +877,10 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                       Result
                     </p>
                     <p className="text-4xl font-display font-bold text-white mt-2">
-                      {formatNumber(absorbance)}
+                      {calcMode === 'absorbance' ? formatNumber(effectiveAbsorbance) : formatNumber(calculatedConcentration)}
                     </p>
                     <p className="text-sm text-white/45 mt-2">
-                      Calculated with <span className="text-white/80">A = epsilon x l x c</span>
+                      {calcMode === 'absorbance' ? 'Target: Absorbance (A)' : 'Target: Concentration (c)'}
                     </p>
                   </div>
                   <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
@@ -825,8 +890,15 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
 
                 <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
                   <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">Live Formula Preview</p>
-                  <p className="text-white font-semibold mt-3 break-words">A = {formulaPreview}</p>
-                  <p className="text-sm text-white/55 mt-2">A = {formatNumber(absorbance)}</p>
+                  {calcMode === 'absorbance' ? (
+                    <p className="text-white font-semibold mt-3 break-words">
+                      A = {formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)} × {formatNumber(concentrationValue)} = {formatNumber(effectiveAbsorbance)}
+                    </p>
+                  ) : (
+                    <p className="text-white font-semibold mt-3 break-words">
+                      c = ({formatNumber(sampleAbsValue)} - {formatNumber(blankAbsValue)}) / ({formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)}) = {formatNumber(calculatedConcentration)} mol/L
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -877,8 +949,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Formula</p>
-                  <p className="text-white mt-2 font-semibold break-words">A = {formulaPreview}</p>
-                  <p className="text-xs text-white/45 mt-2">A = {formatNumber(absorbance)}</p>
+                  <p className="text-white mt-2 font-semibold break-words">{calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
+                  <p className="text-xs text-white/45 mt-2">{calcMode === 'absorbance' ? 'A =' : 'c ='} {calcMode === 'absorbance' ? formatNumber(absorbance) : `${formatNumber(calculatedConcentration)} mol/L`}</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Compound</p>
@@ -905,13 +977,13 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
               <div className="rounded-[1.5rem] bg-[#08101f] border border-white/8 p-5 font-mono text-sm text-white/80">
                 <p>--- FINAL REPORT ---</p>
                 <p className="mt-3">Generated by: {currentUser.fullName} ({currentUser.userId})</p>
-                <p>Formula: A = {formulaPreview}</p>
+                <p>Formula: {calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
                 <p className="mt-3">Compound: {compoundName || 'Not identified'}</p>
                 <p>Epsilon: {formatNumber(epsilonValue)} M^-1 cm^-1</p>
                 <p>Lambda max: {formatWavelengthMax(lambdaMax)}</p>
                 <p>Solvent: {solvent || 'N/A'}</p>
                 <p>Source: {source}</p>
-                <p>Absorbance: {formatNumber(absorbance)}</p>
+                <p>{calcMode === 'absorbance' ? 'Absorbance:' : 'Concentration:'} {calcMode === 'absorbance' ? formatNumber(absorbance) : `${formatNumber(calculatedConcentration)} mol/L`}</p>
               </div>
 
               <div className="flex items-start gap-3 rounded-2xl bg-white/[0.02] border border-white/8 p-4">
