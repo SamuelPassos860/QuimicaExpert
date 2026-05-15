@@ -541,7 +541,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   ) : null;
 
   return (
-    <div className="space-y-8 sm:space-y-10">
+    <div className="max-w-[1600px] mx-auto space-y-8 sm:space-y-10">
       {deleteModal && createPortal(deleteModal, document.body)}
 
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
@@ -571,7 +571,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="relative z-10 flex flex-wrap gap-3">
         <button
           onClick={() => setActiveTab('calculate')}
           className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
@@ -595,8 +595,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
       </div>
 
       {activeTab === 'calculate' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8">
-          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.55fr] gap-6 lg:gap-8">
+          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8 flex flex-col h-full">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className={`rounded-2xl border p-4 ${hasSelectedCompound ? 'border-primary/30 bg-primary/10' : 'border-white/8 bg-white/[0.03]'}`}>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">Step 1</p>
@@ -661,21 +661,21 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[950px] overflow-auto custom-scrollbar pr-0 sm:pr-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pr-0 sm:pr-2 flex-1 min-h-[750px] xl:max-h-[1800px] content-start">
               {isLoadingSpectral && (
-                <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   Loading spectral data...
                 </div>
               )}
 
               {!isLoadingSpectral && spectralError && (
-                <div className="lg:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+                <div className="md:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
                   {spectralError}
                 </div>
               )}
 
               {!isLoadingSpectral && !spectralError && spectralLibrary.length === 0 && (
-                <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   No spectral records found for this search.
                 </div>
               )}
@@ -693,9 +693,10 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <p
-                        className={`font-semibold break-words leading-relaxed transition-colors ${
+                        className={`font-semibold truncate transition-colors ${
                           selectedSpectralRecordId === record.id ? 'text-primary' : 'text-white group-hover:text-primary'
                         }`}
+                        title={record.name}
                       >
                         {record.name}
                       </p>
@@ -713,16 +714,16 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                       {record.source}
                     </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
                       <p className="text-white mt-1 font-semibold">{formatNumber(record.epsilon)}</p>
                     </div>
-                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">lambda max</p>
                       <p className="text-white mt-1 font-semibold leading-relaxed break-words">{formatWavelengthMax(record.lambdaMax)}</p>
                     </div>
-                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0 sm:col-span-2">
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 min-w-0 sm:col-span-2">
                       <p className="text-white/30 font-mono uppercase tracking-widest">solvent</p>
                       <p className="text-white mt-1 font-semibold leading-relaxed break-words">{record.solvent}</p>
                     </div>
@@ -924,7 +925,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
           </section>
         </div>
       ) : (
-        <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
+        <section className="glass-panel -mt-6 rounded-[2rem] p-5 pt-11 sm:p-6 sm:pt-12 lg:p-8 lg:pt-14 border-white/[0.03] space-y-8">
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
@@ -950,21 +951,21 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
             </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {isLoadingSaved && (
-              <div className="xl:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+              <div className="md:col-span-2 lg:col-span-3 2xl:col-span-5 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                 Loading saved compounds...
               </div>
             )}
 
             {!isLoadingSaved && savedError && (
-              <div className="xl:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+              <div className="md:col-span-2 lg:col-span-3 2xl:col-span-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
                 {savedError}
               </div>
             )}
 
             {!isLoadingSaved && !savedError && savedCompounds.length === 0 && (
-              <div className="xl:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+              <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                 No saved compounds found.
               </div>
             )}
@@ -972,11 +973,11 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
             {!isLoadingSaved && !savedError && savedCompounds.map((compound) => (
               <div
                 key={compound.id}
-                className="rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
+                className="w-full rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                  <div>
-                    <p className="text-white text-lg font-semibold">{compound.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-semibold truncate" title={compound.name}>{compound.name}</p>
                     <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                       CAS {compound.cas}
                     </p>
@@ -984,7 +985,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                       Saved {compound.savedAt ? formatDateTime(compound.savedAt) : 'recently'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                     <span className="px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] text-[9px] font-mono uppercase tracking-[0.18em] text-secondary font-bold">
                       {compound.source}
                     </span>

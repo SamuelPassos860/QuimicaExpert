@@ -14,7 +14,7 @@ import spectralRouter from './routes/spectral.ts';
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Ajuste o tamanho conforme necessário
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
