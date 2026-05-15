@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator, Cpu, Link, Unlink, FileUp, RotateCcw } from 'lucide-react';
+import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator, Cpu, Link, Unlink, FileUp, RotateCcw, TrendingUp, Plus, Trash2, CheckCircle2, Circle, Download, Sparkles, FlaskConical } from 'lucide-react';
+import type { AuthUser } from '../types/auth';
+import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
 const methods = [
   { id: 'MTD-01', name: 'Alkaloid Extraction V2', author: 'Dr. Aris Thorne', lastAccess: 'Yesterday', version: '2.4.1', status: 'Approved' },
@@ -15,8 +17,12 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
-export default function Methods() {
-  const [activeTab, setActiveTab] = useState<'library' | 'lambert-beer'>('library');
+interface MethodsProps {
+  currentUser: AuthUser;
+}
+
+export default function Methods({ currentUser }: MethodsProps) {
+  const [activeTab, setActiveTab] = useState<'library' | 'lambert-beer' | 'linear-regression'>('library');
   
   // States para a Calculadora Lambert-Beer
   const [calcMode, setCalcMode] = useState<'concentration' | 'absorbance'>('concentration');
@@ -31,6 +37,69 @@ export default function Methods() {
   const [isSerialConnected, setIsSerialConnected] = useState(false);
   const portRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const regressionFileInputRef = useRef<HTMLInputElement>(null);
+
+  // States para Regressão Linear
+  const [regressionPoints, setRegressionPoints] = useState<{ x: string, y: string, active: boolean }[]>([]);
+  const [newX, setNewX] = useState('');
+  const [newY, setNewY] = useState('');
+  const [sampleY, setSampleY] = useState('');
+
+  // Ref para rastrear a aba ativa dentro do loop de leitura serial (evita stale closures)
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  const addPoint = () => {
+    if (newX.trim() && newY.trim()) {
+      setRegressionPoints([...regressionPoints, { x: newX.replace(',', '.'), y: newY.replace(',', '.'), active: true }]);
+      setNewX('');
+      setNewY('');
+    }
+  };
+
+  const removePoint = (index: number) => {
+    setRegressionPoints(regressionPoints.filter((_, i) => i !== index));
+  };
+
+  const togglePointActive = (index: number) => {
+    const activeCount = regressionPoints.filter(p => p.active).length;
+    // Se tentar desativar e já estiver no limite de 5, bloqueia (a menos que o total seja < 5)
+    if (regressionPoints[index].active && activeCount <= 5 && regressionPoints.length >= 5) {
+      return;
+    }
+    const newPoints = [...regressionPoints];
+    newPoints[index].active = !newPoints[index].active;
+    setRegressionPoints(newPoints);
+  };
+
+  const calculateRegression = () => {
+    const validPoints = regressionPoints
+      .filter(p => p.active && !isNaN(parseFloat(p.x)) && !isNaN(parseFloat(p.y)))
+      .map(p => ({ x: parseFloat(p.x), y: parseFloat(p.y) }));
+
+    if (validPoints.length < 5) return null;
+
+    const n = validPoints.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+    for (const p of validPoints) {
+      sumX += p.x; sumY += p.y; sumXY += p.x * p.y;
+      sumX2 += p.x * p.x; sumY2 += p.y * p.y;
+    }
+
+    const denominator = n * sumX2 - sumX * sumX;
+    if (denominator === 0) return null;
+
+    const slope = (n * sumXY - sumX * sumY) / denominator;
+    const intercept = (sumY - slope * sumX) / n;
+
+    const rNum = n * sumXY - sumX * sumY;
+    const rDen = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+    const r2 = rDen !== 0 ? Math.pow(rNum / rDen, 2) : 0;
+
+    return { slope, intercept, r2, points: validPoints };
+  };
 
   // Sincroniza a absorbância da amostra com base no comprimento de onda selecionado na varredura
   useEffect(() => {
@@ -58,12 +127,12 @@ export default function Methods() {
     }
   }, [targetWavelength, scanMap]);
 
-  const sampleVal = Number.parseFloat(absSample) || 0;
-  const blankVal = Number.parseFloat(absBlank) || 0;
-  const epsVal = Number.parseFloat(epsilon) || 0;
-  const pathVal = Number.parseFloat(pathLength) || 0;
-  const dilVal = Number.parseFloat(dilutionFactor) || 1;
-  const inputConcVal = Number.parseFloat(inputConcentration) || 0;
+  const sampleVal = Number.parseFloat(absSample.toString().replace(',', '.')) || 0;
+  const blankVal = Number.parseFloat(absBlank.toString().replace(',', '.')) || 0;
+  const epsVal = Number.parseFloat(epsilon.toString().replace(',', '.')) || 0;
+  const pathVal = Number.parseFloat(pathLength.toString().replace(',', '.')) || 0;
+  const dilVal = Number.parseFloat(dilutionFactor.toString().replace(',', '.')) || 1;
+  const inputConcVal = Number.parseFloat(inputConcentration.toString().replace(',', '.')) || 0;
 
   const effectiveAbs = sampleVal - blankVal;
 
@@ -71,6 +140,32 @@ export default function Methods() {
   const resultAbsorbance = epsVal * pathVal * (inputConcVal / dilVal);
 
   const finalResult = calcMode === 'concentration' ? resultConcentration : resultAbsorbance;
+
+  // Função para exportar o relatório PDF de Lambert-Beer
+  const exportReportPdf = async () => {
+    const payload = buildReportPayload(
+      currentUser,
+      {
+        compoundName: 'Lambert-Beer Analysis',
+        casId: 'N/A',
+        lambdaMax: targetWavelength || 'N/A',
+        solvent: 'N/A',
+        source: 'Manual',
+        epsilonValue: epsVal,
+        pathLengthValue: pathVal,
+        concentrationValue: calcMode === 'concentration' ? finalResult : inputConcVal,
+        absorbance: calcMode === 'absorbance' ? finalResult : effectiveAbs
+      }
+    );
+
+    try {
+      await fetch('/api/reports', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    } catch (e) {
+      console.warn('Failed to save report snapshot:', e);
+    }
+
+    openPrintableReport(payload);
+  };
 
   // Função para limpar todos os campos
   const resetCalculator = () => {
@@ -140,11 +235,17 @@ export default function Methods() {
           if (done) break;
           const text = new TextDecoder().decode(value);
           
-          // Tenta processar como varredura, se não encontrar pares, tenta pegar um número individual
-          const { count } = processDataStream(text);
-          if (count === 0) {
-            const numericMatch = text.match(/(?<!\w)[-+]?[0-9]*\.?[0-9]+(?!\w)/);
-            if (numericMatch) setAbsSample(numericMatch[0]);
+          const numericMatch = text.match(/(?<!\d)[-+]?\d*[.,]?\d+(?!\d)/);
+          const val = numericMatch ? numericMatch[0].replace(',', '.') : null;
+
+          if (activeTabRef.current === 'lambert-beer') {
+            const { count } = processDataStream(text);
+            if (count === 0 && val) setAbsSample(val);
+          } else if (activeTabRef.current === 'linear-regression') {
+            // Na regressão, geralmente recebemos um valor por vez do equipamento
+            if (val) {
+              setNewY(val);
+            }
           }
         }
       } finally {
@@ -191,6 +292,37 @@ export default function Methods() {
     reader.readAsText(file);
   };
 
+  const handleRegressionFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split(/\r?\n/);
+      const newPoints: { x: string, y: string, active: boolean }[] = [];
+      
+      lines.forEach(line => {
+        const cleanLine = line.replace(/"/g, '').trim();
+        // Regex para capturar dois números (decimais ou inteiros) separados por delimitadores comuns
+        const matches = cleanLine.match(/([-+]?\d+[.,]?\d*)[,\s\t;|]+([-+]?\d+[.,]?\d*)/);
+        
+        if (matches && matches.length >= 3) {
+          const x = matches[1].replace(',', '.');
+          const y = matches[2].replace(',', '.');
+          if (!isNaN(parseFloat(x)) && !isNaN(parseFloat(y))) {
+            newPoints.push({ x, y, active: true });
+          }
+        }
+      });
+
+      if (newPoints.length > 0) {
+        setRegressionPoints(prev => [...prev, ...newPoints]);
+      }
+    };
+    reader.readAsText(file);
+    if (e.target) e.target.value = ''; // Reseta o input para permitir re-upload do mesmo arquivo
+  };
+
   return (
     <div className="space-y-8 sm:space-y-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -231,6 +363,16 @@ export default function Methods() {
           }`}
         >
           Lambert-Beer Calc
+        </button>
+        <button
+          onClick={() => setActiveTab('linear-regression')}
+          className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
+            activeTab === 'linear-regression'
+              ? 'bg-primary text-on-primary border-primary shadow-[0_0_30px_rgba(167,200,255,0.2)]'
+              : 'bg-white/[0.03] text-white/70 border-white/10 hover:bg-white/[0.08]'
+          }`}
+        >
+          Linear Regression
         </button>
       </div>
 
@@ -285,7 +427,7 @@ export default function Methods() {
             </div>
           ))}
         </div>
-      ) : (
+      ) : activeTab === 'lambert-beer' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           <section className="glass-panel rounded-[2rem] p-6 sm:p-8 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -400,45 +542,332 @@ export default function Methods() {
             </div>
           </section>
 
-          <section className="glass-panel rounded-[2rem] p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-transparent border-primary/10">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Calculation Result</p>
-                <p className="text-4xl font-display font-bold text-white mt-2">
-                  {formatNumber(finalResult)} <span className="text-lg text-white/40 font-mono">{calcMode === 'concentration' ? 'mol/L' : 'AU'}</span>
-                </p>
+          <section className="space-y-6">
+            <div className="glass-panel rounded-[2rem] p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-transparent border-primary/10">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Calculation Result</p>
+                  <p className="text-4xl font-display font-bold text-white mt-2">
+                    {formatNumber(finalResult)} <span className="text-lg text-white/40 font-mono">{calcMode === 'concentration' ? 'mol/L' : 'AU'}</span>
+                  </p>
+                </div>
+                <div className="p-4 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary">
+                  <Waves size={32} />
+                </div>
               </div>
-              <div className="p-4 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary">
-                <Waves size={32} />
-              </div>
-            </div>
 
-            <div className="space-y-4">
-              {calcMode === 'concentration' && (
-              <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
-                <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Effective Absorbance (A)</p>
-                <p className="text-white font-mono">{sampleVal} - {blankVal} = <span className="text-primary font-bold">{effectiveAbs.toFixed(4)} AU</span></p>
-              </div>
-              )}
-              <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
-                <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Applied Formula</p>
-                <p className="text-sm text-white/80 leading-relaxed italic">
-                  {calcMode === 'concentration' ? 'c = (A / (ε · l)) · DF' : 'A = ε · l · (c / DF)'}
-                </p>
-                {calcMode === 'concentration' ? (
-                <p className="text-xs text-white/40 mt-1">
-                  c = ({effectiveAbs.toFixed(4)} / ({epsVal} · {pathVal})) · {dilVal}
-                </p>
-                ) : (
-                <p className="text-xs text-white/40 mt-1">
-                  A = {epsVal} · {pathVal} · ({inputConcVal} / {dilVal})
-                </p>
+              <div className="space-y-4">
+                {calcMode === 'concentration' && (
+                <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
+                  <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Effective Absorbance (A)</p>
+                  <p className="text-white font-mono">{sampleVal} - {blankVal} = <span className="text-primary font-bold">{effectiveAbs.toFixed(4)} AU</span></p>
+                </div>
                 )}
+                <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
+                  <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Applied Formula</p>
+                  <p className="text-sm text-white/80 leading-relaxed italic">
+                    {calcMode === 'concentration' ? 'c = (A / (ε · l)) · DF' : 'A = ε · l · (c / DF)'}
+                  </p>
+                  {calcMode === 'concentration' ? (
+                  <p className="text-xs text-white/40 mt-1">
+                    c = ({effectiveAbs.toFixed(4)} / ({epsVal} · {pathVal})) · {dilVal}
+                  </p>
+                  ) : (
+                  <p className="text-xs text-white/40 mt-1">
+                    A = {epsVal} · {pathVal} · ({inputConcVal} / {dilVal})
+                  </p>
+                  )}
+                </div>
               </div>
             </div>
 
-            <button className="w-full mt-8 py-4 bg-secondary text-on-secondary rounded-xl text-[10px] font-mono font-bold uppercase tracking-widest hover:shadow-[0_0_30px_rgba(118,243,234,0.3)] transition-all flex items-center justify-center gap-2">
-              <Calculator size={16} /> Export Calculation
+            <div className="glass-panel rounded-[2rem] p-6 sm:p-8 border-white/[0.03] space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
+                    <Sparkles size={22} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
+                      Session Report
+                    </p>
+                    <h2 className="text-2xl font-display font-bold text-white mt-1">
+                      Technical analysis report
+                    </h2>
+                  </div>
+                </div>
+              <button
+                onClick={exportReportPdf}
+                  className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all w-full sm:w-auto"
+                >
+                  <Download size={16} />
+                  Print PDF Report
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Applied Formula</p>
+                  <p className="text-white mt-2 font-semibold break-words">
+                    {calcMode === 'concentration' ? 'c = (A / (ε · l)) · DF' : 'A = ε · l · (c / DF)'}
+                  </p>
+                  <p className="text-xs text-white/45 mt-2">Target: {calcMode === 'concentration' ? 'Concentration' : 'Absorbance'}</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Wavelength</p>
+                  <p className="text-white mt-2 font-semibold">{targetWavelength || 'N/A'} nm</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Molar Coeff. (ε)</p>
+                  <p className="text-white mt-2 font-semibold">{formatNumber(epsVal)} M⁻¹cm⁻¹</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Path Length (l)</p>
+                  <p className="text-white mt-2 font-semibold">{formatNumber(pathVal)} cm</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Dilution Factor</p>
+                  <p className="text-white mt-2 font-semibold">{formatNumber(dilVal)}x</p>
+                </div>
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Calculation Result</p>
+                  <p className="text-white mt-2 font-semibold">
+                    {formatNumber(finalResult)} {calcMode === 'concentration' ? 'mol/L' : 'AU'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-[1.5rem] bg-[#08101f] border border-white/8 p-5 font-mono text-sm text-white/80">
+                <p>--- FINAL REPORT ---</p>
+                <p className="mt-3">Method: Beer-Lambert Law Calculation</p>
+                <p>Mode: {calcMode === 'concentration' ? 'Quantification' : 'Absorbance Estimation'}</p>
+                <p className="mt-3">Analytical Parameters:</p>
+                <p>  - Epsilon: {formatNumber(epsVal)}</p>
+                <p>  - Path length: {formatNumber(pathVal)}</p>
+                <p>  - Dilution: {formatNumber(dilVal)}</p>
+                <p className="mt-3">Resulting Value: {formatNumber(finalResult)} {calcMode === 'concentration' ? 'mol/L' : 'AU'}</p>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-2xl bg-white/[0.02] border border-white/8 p-4">
+                <FlaskConical size={18} className="text-primary mt-0.5 shrink-0" />
+                <p className="text-sm text-white/55 leading-relaxed">
+                  This calculation assumes a linear relationship between absorbance and concentration. Ensure your 
+                  readings are within the dynamic linear range of your instrument.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-8 items-start">
+          <section className="glass-panel rounded-[2rem] p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
+                  <TrendingUp size={22} />
+                </div>
+                <h2 className="text-xl font-display font-bold text-white">Data Calibration Curve</h2>
+              </div>
+              
+              <div className="flex gap-2">
+                <input 
+                  type="file" 
+                  ref={regressionFileInputRef} 
+                  onChange={handleRegressionFileImport} 
+                  className="hidden" 
+                  accept=".csv,.txt,.log" 
+                />
+                <button 
+                  onClick={() => setRegressionPoints([])}
+                  title="Clear All Points"
+                  className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                >
+                  <RotateCcw size={18} />
+                </button>
+                <button 
+                  onClick={() => regressionFileInputRef.current?.click()}
+                  title="Import Points from File"
+                  className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"
+                >
+                  <FileUp size={18} />
+                </button>
+                <button 
+                  onClick={isSerialConnected ? disconnectSerial : connectSerial}
+                  title={isSerialConnected ? "Disconnect Equipment" : "Connect Serial Equipment"}
+                  className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest ${
+                    isSerialConnected 
+                      ? 'bg-green-500/10 border-green-500/30 text-green-400' 
+                      : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white'
+                  }`}
+                >
+                  {isSerialConnected ? <Unlink size={18} /> : <Link size={18} />}
+                  {isSerialConnected ? 'Online' : 'Hardware'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Concentração (X - mol/L)</span>
+                <input type="number" step="any" value={newX} onChange={(e) => setNewX(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Absorbância (Y - AU)</span>
+                <div className="flex gap-2">
+                  <input type="number" step="any" value={newY} onChange={(e) => setNewY(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
+                  <button onClick={addPoint} className="p-3 bg-primary text-on-primary rounded-xl hover:scale-105 transition-all"><Plus size={20} /></button>
+                </div>
+              </label>
+            </div>
+
+            <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+              {regressionPoints.length === 0 && (
+                <div className="py-8 text-center border-2 border-dashed border-white/5 rounded-2xl text-white/20 text-xs font-mono uppercase tracking-widest">No data points added</div>
+              )}
+              {regressionPoints.map((point, idx) => (
+                <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border transition-all group ${
+                  point.active ? 'bg-white/[0.03] border-white/5' : 'bg-red-500/5 border-red-500/10 opacity-50'
+                }`}>
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => togglePointActive(idx)}
+                      className={`transition-colors ${point.active ? 'text-primary' : 'text-white/20'}`}
+                      title={point.active ? "Desativar ponto" : "Ativar ponto"}
+                    >
+                      {point.active ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                    </button>
+                    <div className="flex gap-6 font-mono text-sm">
+                      <span className="text-white/40 w-6">P{idx + 1}</span>
+                      <span className="text-white">X: {point.x}</span>
+                      <span className="text-white">Y: {point.y}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => removePoint(idx)} className="text-white/10 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-6">
+            <div className="glass-panel rounded-[2rem] p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-transparent border-primary/10">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Linear Equation & Correlation</p>
+                  {(() => {
+                    const results = calculateRegression();
+                    const activeCount = regressionPoints.filter(p => p.active).length;
+                    if (!results) return (
+                      <p className="text-sm font-mono text-white/20 mt-2 italic">
+                        {activeCount < 5 ? `Min. 5 active points required (${activeCount}/5)` : 'Invalid data'}
+                      </p>
+                    );
+                    return (
+                      <div className="space-y-2 mt-2">
+                        <p className="text-3xl font-display font-bold text-white">
+                          y = {results.slope.toFixed(4)}x {results.intercept >= 0 ? '+' : '-'} {Math.abs(results.intercept).toFixed(4)}
+                        </p>
+                        <p className="text-sm font-mono text-primary font-bold">R² = {results.r2.toFixed(6)}</p>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Sample Analysis Field */}
+                <div className="mt-6 pt-6 border-t border-white/10">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-4">Sample Quantification</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                    <label className="block space-y-2">
+                      <span className="text-[10px] font-mono text-secondary uppercase tracking-widest">Sample Absorbance (Y)</span>
+                      <input type="number" step="any" value={sampleY} onChange={(e) => setSampleY(e.target.value)} className="w-full rounded-xl bg-white/[0.05] border border-white/10 px-4 py-3 text-white outline-none focus:border-secondary/40" placeholder="0.000" />
+                    </label>
+                    <div className="rounded-xl bg-secondary/10 border border-secondary/20 p-4">
+                      <p className="text-[10px] font-mono uppercase text-secondary/60 tracking-widest">Calculated Conc. (X)</p>
+                      <p className="text-xl font-display font-bold text-white mt-1">
+                        {(() => {
+                          const results = calculateRegression();
+                          const yVal = parseFloat(sampleY);
+                          if (!results || isNaN(yVal) || results.slope === 0) return '---';
+                          const xVal = (yVal - results.intercept) / results.slope;
+                          return xVal.toFixed(6);
+                        })()} <span className="text-xs font-mono text-white/40">mol/L</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary">
+                  <Sigma size={32} />
+                </div>
+              </div>
+
+              {/* Chart Visualization */}
+              <div className="relative w-full aspect-video bg-[#08101f]/60 rounded-2xl border border-white/5 p-6 overflow-hidden">
+                {(() => {
+                  const allValid = regressionPoints
+                    .map((p, i) => ({ x: parseFloat(p.x), y: parseFloat(p.y), active: p.active, originalIndex: i }))
+                    .filter(p => !isNaN(p.x) && !isNaN(p.y));
+
+                  if (allValid.length === 0) return (
+                    <div className="h-full flex flex-col items-center justify-center text-white/10 gap-3">
+                      <TrendingUp size={48} className="opacity-5" />
+                      <span className="text-[10px] font-mono uppercase tracking-[0.3em]">Waiting for data points</span>
+                    </div>
+                  );
+
+                  const results = calculateRegression();
+                  const padding = 40;
+                  const width = 400;
+                  const height = 240;
+                  
+                  // Usamos todos os pontos para manter a escala do gráfico fixa
+                  const minX = Math.min(...allValid.map(p => p.x));
+                  const maxX = Math.max(...allValid.map(p => p.x));
+                  const minY = Math.min(...allValid.map(p => p.y));
+                  const maxY = Math.max(...allValid.map(p => p.y));
+                  
+                  const rangeX = (maxX - minX) || 1;
+                  const rangeY = (maxY - minY) || 1;
+                  
+                  const scaleX = (val: number) => padding + (val - minX) / rangeX * (width - 2 * padding);
+                  const scaleY = (val: number) => height - padding - (val - minY) / rangeY * (height - 2 * padding);
+
+                  return (
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                      {/* Grid */}
+                      <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
+                      <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
+                      
+                      {/* Regression Line */}
+                      {results && (
+                        <line 
+                          x1={scaleX(minX)} y1={scaleY(results.slope * minX + results.intercept)} 
+                          x2={scaleX(maxX)} y2={scaleY(results.slope * maxX + results.intercept)} 
+                          stroke="#76f3ea" strokeWidth="2" strokeDasharray="4"
+                          className="opacity-60"
+                        />
+                      )}
+                      
+                      {/* Data Points */}
+                      {allValid.map((p) => (
+                        <circle 
+                          key={p.originalIndex} 
+                          cx={scaleX(p.x)} 
+                          cy={scaleY(p.y)} 
+                          r="5" 
+                          fill={p.active ? "#a7c8ff" : "rgba(239, 68, 68, 0.3)"}
+                          stroke={p.active ? "none" : "#ef4444"}
+                          strokeWidth={p.active ? "0" : "1"}
+                          onClick={() => togglePointActive(p.originalIndex)}
+                          className={`cursor-pointer transition-all duration-300 hover:r-7 ${p.active ? 'drop-shadow-[0_0_8px_rgba(167,200,255,0.8)]' : 'hover:fill-red-500/50'}`}
+                        />
+                      ))}
+                    </svg>
+                  );
+                })()}
+              </div>
+            </div>
+            <button className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2">
+              Export Calibration Report
             </button>
           </section>
         </div>
