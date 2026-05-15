@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator, Cpu, Link, Unlink, FileUp } from 'lucide-react';
+import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator, Cpu, Link, Unlink, FileUp, RotateCcw } from 'lucide-react';
 
 const methods = [
   { id: 'MTD-01', name: 'Alkaloid Extraction V2', author: 'Dr. Aris Thorne', lastAccess: 'Yesterday', version: '2.4.1', status: 'Approved' },
@@ -34,8 +34,27 @@ export default function Methods() {
 
   // Sincroniza a absorbância da amostra com base no comprimento de onda selecionado na varredura
   useEffect(() => {
-    if (targetWavelength && scanMap[targetWavelength]) {
-      setAbsSample(scanMap[targetWavelength]);
+    const targetNum = Number.parseFloat(targetWavelength.replace(',', '.'));
+    if (isNaN(targetNum)) return;
+
+    const entries = Object.entries(scanMap);
+    if (entries.length === 0) return;
+
+    let closestAbs = "";
+    let minDiff = Number.POSITIVE_INFINITY;
+
+    for (const [wlStr, absVal] of entries) {
+      const wlNum = Number.parseFloat(wlStr.replace(',', '.'));
+      const diff = Math.abs(wlNum - targetNum);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestAbs = absVal;
+      }
+    }
+
+    // Tolerância de 1nm para cobrir arredondamentos de diferentes equipamentos
+    if (minDiff <= 1.0) {
+      setAbsSample(closestAbs.replace(',', '.'));
     }
   }, [targetWavelength, scanMap]);
 
@@ -53,21 +72,52 @@ export default function Methods() {
 
   const finalResult = calcMode === 'concentration' ? resultConcentration : resultAbsorbance;
 
+  // Função para limpar todos os campos
+  const resetCalculator = () => {
+    setAbsSample('0');
+    setAbsBlank('0');
+    setEpsilon('0');
+    setPathLength('1');
+    setDilutionFactor('1');
+    setInputConcentration('0');
+    setTargetWavelength('');
+    setScanMap({});
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   // Função para processar texto de varredura (Wavelength Absorbance)
-  const processDataStream = (text: string) => {
+  const processDataStream = (text: string, clearFirst = false) => {
     const lines = text.split(/\r?\n/);
     const newScanMap: Record<string, string> = {};
     let foundCount = 0;
     
     lines.forEach(line => {
-      const matches = line.trim().match(/^(\d+\.?\d*)\s+([-+]?[0-9]*\.?[0-9]+)/);
-      if (matches) {
-        newScanMap[matches[1]] = matches[2];
-        foundCount++;
+      // Remove aspas e espaços extras
+      const cleanLine = line.replace(/"/g, '').trim();
+      // Regex robusta: captura dois números separados por espaço, tab, vírgula, ponto-e-vírgula ou pipe (|)
+      // Agora aceita o formato "Wavelength | Absorbance" do seu equipamento
+      const matches = cleanLine.match(/(\d{3,4}(?:[.,]\d+)?)[,\s\t;|]+([-+]?\d+[.,]?\d*)/);
+      
+      if (matches && matches.length >= 3) {
+        const wavelength = matches[1].replace(',', '.');
+        const absorbance = matches[2].replace(',', '.');
+        
+        const wlNum = parseFloat(wavelength);
+        const absNum = parseFloat(absorbance);
+        // Filtra comprimentos de onda válidos e evita capturar ranges do cabeçalho (absorbância raramente > 4.0)
+        if (wlNum >= 190 && wlNum <= 1100 && absNum < 10) {
+          newScanMap[wavelength] = absorbance;
+          foundCount++;
+        }
       }
     });
-    setScanMap(prev => ({ ...prev, ...newScanMap }));
-    return foundCount;
+
+    if (clearFirst) {
+      setScanMap(newScanMap);
+    } else {
+      setScanMap(prev => ({ ...prev, ...newScanMap }));
+    }
+    return { count: foundCount, map: newScanMap };
   };
 
   // Web Serial API Logic
@@ -91,8 +141,8 @@ export default function Methods() {
           const text = new TextDecoder().decode(value);
           
           // Tenta processar como varredura, se não encontrar pares, tenta pegar um número individual
-          const found = processDataStream(text);
-          if (found === 0) {
+          const { count } = processDataStream(text);
+          if (count === 0) {
             const numericMatch = text.match(/(?<!\w)[-+]?[0-9]*\.?[0-9]+(?!\w)/);
             if (numericMatch) setAbsSample(numericMatch[0]);
           }
@@ -120,11 +170,22 @@ export default function Methods() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
-      const found = processDataStream(text);
-      if (found === 0) {
-        // Se não for uma varredura, tenta extrair um número que pareça uma absorbância (evita IDs grandes)
-        const numericMatch = text.match(/(?<!\w)[-+]?[0-1]\.\d{1,4}(?!\w)|(?<!\w)\d\.\d{1,4}(?!\w)/) || text.match(/[-+]?[0-9]*\.?[0-9]+/);
-        if (numericMatch) setAbsSample(numericMatch[0]);
+      const { count, map } = processDataStream(text, true); 
+      
+      if (count > 0) {
+        // Auto-detecta o Pico (λ-max) para facilitar a vida do usuário
+        const entries = Object.entries(map);
+        const peak = entries.reduce((prev, curr) => 
+          parseFloat(curr[1]) > parseFloat(prev[1]) ? curr : prev
+        );
+        
+        setTargetWavelength(peak[0]);
+        setAbsSample(peak[1]);
+      } else {
+        // Fallback: Tenta extrair um valor decimal isolado que pareça absorbância (entre 0.0 e 3.0)
+        // Melhorado para evitar IDs grandes (ex: 2000)
+        const numericMatch = text.match(/(?<!\d)[0-2][.,]\d{2,6}(?!\d)/);
+        if (numericMatch) setAbsSample(numericMatch[0].replace(',', '.'));
       }
     };
     reader.readAsText(file);
@@ -246,6 +307,13 @@ export default function Methods() {
                   accept=".csv,.txt,.log" 
                 />
                 <button 
+                  onClick={resetCalculator}
+                  title="Reset All Fields"
+                  className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                >
+                  <RotateCcw size={18} />
+                </button>
+                <button 
                   onClick={() => fileInputRef.current?.click()}
                   title="Import from file"
                   className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"
@@ -295,8 +363,10 @@ export default function Methods() {
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Target Wavelength (nm)</span>
                     <div className="relative">
                       <input type="number" step="1" value={targetWavelength} onChange={(e) => setTargetWavelength(e.target.value)} placeholder="Ex: 400" className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
-                      {scanMap[targetWavelength] && (
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-mono text-green-400 bg-green-400/10 px-2 py-1 rounded">LOADED</span>
+                  {targetWavelength && Object.keys(scanMap).some(wl => Math.abs(Number.parseFloat(wl.replace(',', '.')) - Number.parseFloat(targetWavelength)) <= 1.0) && (
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-mono text-green-400 bg-green-400/10 px-2 py-1 rounded shadow-[0_0_10px_rgba(74,222,128,0.2)]">
+                      MATCH FOUND
+                    </span>
                       )}
                     </div>
                   </label>
