@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator, Cpu, Link, Unlink, FileUp } from 'lucide-react';
 
 const methods = [
   { id: 'MTD-01', name: 'Alkaloid Extraction V2', author: 'Dr. Aris Thorne', lastAccess: 'Yesterday', version: '2.4.1', status: 'Approved' },
@@ -26,6 +26,18 @@ export default function Methods() {
   const [pathLength, setPathLength] = useState('1');
   const [dilutionFactor, setDilutionFactor] = useState('1');
   const [inputConcentration, setInputConcentration] = useState('0');
+  const [targetWavelength, setTargetWavelength] = useState('');
+  const [scanMap, setScanMap] = useState<Record<string, string>>({});
+  const [isSerialConnected, setIsSerialConnected] = useState(false);
+  const portRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sincroniza a absorbância da amostra com base no comprimento de onda selecionado na varredura
+  useEffect(() => {
+    if (targetWavelength && scanMap[targetWavelength]) {
+      setAbsSample(scanMap[targetWavelength]);
+    }
+  }, [targetWavelength, scanMap]);
 
   const sampleVal = Number.parseFloat(absSample) || 0;
   const blankVal = Number.parseFloat(absBlank) || 0;
@@ -40,6 +52,83 @@ export default function Methods() {
   const resultAbsorbance = epsVal * pathVal * (inputConcVal / dilVal);
 
   const finalResult = calcMode === 'concentration' ? resultConcentration : resultAbsorbance;
+
+  // Função para processar texto de varredura (Wavelength Absorbance)
+  const processDataStream = (text: string) => {
+    const lines = text.split(/\r?\n/);
+    const newScanMap: Record<string, string> = {};
+    let foundCount = 0;
+    
+    lines.forEach(line => {
+      const matches = line.trim().match(/^(\d+\.?\d*)\s+([-+]?[0-9]*\.?[0-9]+)/);
+      if (matches) {
+        newScanMap[matches[1]] = matches[2];
+        foundCount++;
+      }
+    });
+    setScanMap(prev => ({ ...prev, ...newScanMap }));
+    return foundCount;
+  };
+
+  // Web Serial API Logic
+  const connectSerial = async () => {
+    if (!('serial' in navigator)) {
+      alert('Web Serial API not supported in this browser. Use Chrome or Edge.');
+      return;
+    }
+
+    try {
+      const port = await (navigator as any).serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      portRef.current = port;
+      setIsSerialConnected(true);
+
+      const reader = port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const text = new TextDecoder().decode(value);
+          
+          // Tenta processar como varredura, se não encontrar pares, tenta pegar um número individual
+          const found = processDataStream(text);
+          if (found === 0) {
+            const numericMatch = text.match(/(?<!\w)[-+]?[0-9]*\.?[0-9]+(?!\w)/);
+            if (numericMatch) setAbsSample(numericMatch[0]);
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (err) {
+      console.error('Serial Connection Error:', err);
+      setIsSerialConnected(false);
+    }
+  };
+
+  const disconnectSerial = async () => {
+    if (portRef.current) {
+      await portRef.current.close();
+      portRef.current = null;
+      setIsSerialConnected(false);
+    }
+  };
+
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const found = processDataStream(text);
+      if (found === 0) {
+        // Se não for uma varredura, tenta extrair um número que pareça uma absorbância (evita IDs grandes)
+        const numericMatch = text.match(/(?<!\w)[-+]?[0-1]\.\d{1,4}(?!\w)|(?<!\w)\d\.\d{1,4}(?!\w)/) || text.match(/[-+]?[0-9]*\.?[0-9]+/);
+        if (numericMatch) setAbsSample(numericMatch[0]);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -88,7 +177,6 @@ export default function Methods() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {methods.map((method) => (
             <div key={method.id} className="glass-panel p-5 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 group hover:bg-white/[0.02] transition-all relative overflow-hidden border-white/[0.03] rounded-2xl">
-              {/* ... conteúdo existente do card de método ... */}
               <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-8 min-w-0">
                 <div className="relative">
@@ -139,7 +227,7 @@ export default function Methods() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           <section className="glass-panel rounded-[2rem] p-6 sm:p-8 space-y-6">
-            <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
                   <Sigma size={22} />
@@ -148,7 +236,38 @@ export default function Methods() {
                   {calcMode === 'concentration' ? 'Find Concentration (c)' : 'Find Absorbance (A)'}
                 </h2>
               </div>
+              
+              <div className="flex gap-2">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileImport} 
+                  className="hidden" 
+                  accept=".csv,.txt,.log" 
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Import from file"
+                  className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"
+                >
+                  <FileUp size={18} />
+                </button>
+                <button 
+                  onClick={isSerialConnected ? disconnectSerial : connectSerial}
+                  title={isSerialConnected ? "Disconnect Equipment" : "Connect Serial Equipment"}
+                  className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest ${
+                    isSerialConnected 
+                      ? 'bg-green-500/10 border-green-500/30 text-green-400' 
+                      : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white'
+                  }`}
+                >
+                  {isSerialConnected ? <Unlink size={18} /> : <Link size={18} />}
+                  {isSerialConnected ? 'Online' : 'Hardware'}
+                </button>
+              </div>
+            </div>
 
+            <div className="space-y-6">
               <div className="flex p-1 rounded-xl bg-white/[0.03] border border-white/10">
                 <button
                   onClick={() => setCalcMode('concentration')}
@@ -172,14 +291,23 @@ export default function Methods() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {calcMode === 'concentration' ? (
                 <>
-              <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Sample Absorbance</span>
-                <input type="number" step="any" value={absSample} onChange={(e) => setAbsSample(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Blank (Baseline)</span>
-                <input type="number" step="any" value={absBlank} onChange={(e) => setAbsBlank(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
-              </label>
+                  <label className="block space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Target Wavelength (nm)</span>
+                    <div className="relative">
+                      <input type="number" step="1" value={targetWavelength} onChange={(e) => setTargetWavelength(e.target.value)} placeholder="Ex: 400" className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                      {scanMap[targetWavelength] && (
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-mono text-green-400 bg-green-400/10 px-2 py-1 rounded">LOADED</span>
+                      )}
+                    </div>
+                  </label>
+                  <label className="block space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Absorbance (A)</span>
+                    <input type="number" step="any" value={absSample} onChange={(e) => setAbsSample(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                  </label>
+                  <label className="block space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Blank (Baseline)</span>
+                    <input type="number" step="any" value={absBlank} onChange={(e) => setAbsBlank(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                  </label>
                 </>
               ) : (
                 <label className="block space-y-2">
