@@ -750,24 +750,132 @@ export default function Methods({ currentUser }: MethodsProps) {
 
           <section className="space-y-6">
             <div className="glass-panel rounded-[2rem] p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-transparent border-primary/10">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Linear Equation & Correlation</p>
-                  {(() => {
-                    const results = calculateRegression();
-                    const activeCount = regressionPoints.filter(p => p.active).length;
-                    if (!results) return (
-                      <p className="text-sm font-mono text-white/20 mt-2 italic">
+              <div className="flex flex-col gap-6 mb-8">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Linear Calibration Model</p>
+                    <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-tight">Least Squares Method</h3>
+                  </div>
+                </div>
+
+                {(() => {
+                  const results = calculateRegression();
+                  const activeCount = regressionPoints.filter(p => p.active).length;
+                  if (!results) return (
+                    <div className="py-6 border-2 border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center">
+                      <p className="text-sm font-mono text-white/20 italic">
                         {activeCount < 5 ? `Min. 5 active points required (${activeCount}/5)` : 'Invalid data'}
                       </p>
-                    );
-                    return (
-                      <div className="space-y-2 mt-2">
-                        <p className="text-3xl font-display font-bold text-white">
-                          y = {results.slope.toFixed(4)}x {results.intercept >= 0 ? '+' : '-'} {Math.abs(results.intercept).toFixed(4)}
-                        </p>
-                        <p className="text-sm font-mono text-primary font-bold">R² = {results.r2.toFixed(6)}</p>
+                    </div>
+                  );
+
+                  const equationText = `y = ${results.slope.toFixed(4)}x ${results.intercept >= 0 ? '+' : '-'} ${Math.abs(results.intercept).toFixed(4)}`;
+
+                  return (
+                    <div className="space-y-6">
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+                        <div className="relative p-6 rounded-2xl bg-[#08101f]/80 border border-white/10 flex items-center justify-between">
+                          <div>
+                            <p className="text-[9px] font-mono text-primary uppercase tracking-[0.2em] mb-2">Regression Equation</p>
+                            <p className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
+                              {equationText}
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => navigator.clipboard.writeText(equationText)}
+                            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                            title="Copy Equation"
+                          >
+                            <Copy size={16} />
+                          </button>
+                        </div>
                       </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                          <p className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-1">Sensitivity (m)</p>
+                          <p className="text-sm font-mono text-white font-bold">{results.slope.toFixed(6)}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                          <p className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-1">Intercept (b)</p>
+                          <p className="text-sm font-mono text-white font-bold">{results.intercept.toFixed(6)}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
+                          <p className="text-[8px] font-mono text-primary/60 uppercase tracking-widest mb-1">Correlation (R²)</p>
+                          <p className="text-sm font-mono text-primary font-bold">{results.r2.toFixed(6)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                </div>
+
+                {/* Chart Visualization - Integrated in the middle */}
+                <div className="relative w-full aspect-video bg-[#08101f]/60 rounded-2xl border border-white/5 p-6 overflow-hidden mb-8">
+                  {(() => {
+                    const allValid = regressionPoints
+                      .map((p, i) => ({ x: parseFloat(p.x), y: parseFloat(p.y), active: p.active, originalIndex: i }))
+                      .filter(p => !isNaN(p.x) && !isNaN(p.y));
+
+                    if (allValid.length === 0) return (
+                      <div className="h-full flex flex-col items-center justify-center text-white/10 gap-3">
+                        <TrendingUp size={48} className="opacity-5" />
+                        <span className="text-[10px] font-mono uppercase tracking-[0.3em]">Waiting for data points</span>
+                      </div>
+                    );
+
+                    const results = calculateRegression();
+                    const padding = 40;
+                    const width = 400;
+                    const height = 240;
+                    
+                    const minX = Math.min(...allValid.map(p => p.x));
+                    const maxX = Math.max(...allValid.map(p => p.x));
+                    const minY = Math.min(...allValid.map(p => p.y));
+                    const maxY = Math.max(...allValid.map(p => p.y));
+                    
+                    const rangeX = (maxX - minX) || 1;
+                    const rangeY = (maxY - minY) || 1;
+                    
+                    const scaleX = (val: number) => padding + (val - minX) / rangeX * (width - 2 * padding);
+                    const scaleY = (val: number) => height - padding - (val - minY) / rangeY * (height - 2 * padding);
+
+                    return (
+                      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                        {/* Grid Lines */}
+                        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
+                        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
+                        
+                        {/* Regression Line */}
+                        {results && (
+                          <line 
+                            x1={scaleX(minX)} y1={scaleY(results.slope * minX + results.intercept)} 
+                            x2={scaleX(maxX)} y2={scaleY(results.slope * maxX + results.intercept)} 
+                            stroke="#76f3ea" strokeWidth="2" strokeDasharray="4"
+                            className="opacity-60"
+                          />
+                        )}
+                        
+                        {/* Data Points */}
+                        {allValid.map((p) => (
+                          <circle 
+                            key={p.originalIndex} 
+                            cx={scaleX(p.x)} 
+                            cy={scaleY(p.y)} 
+                            r="5" 
+                            fill={p.active ? "#a7c8ff" : "rgba(239, 68, 68, 0.2)"}
+                            stroke={p.active ? "none" : "#ef4444"}
+                            strokeWidth={p.active ? "0" : "1"}
+                            onClick={() => togglePointActive(p.originalIndex)}
+                            className={`cursor-pointer transition-all duration-300 hover:r-7 ${
+                              p.active 
+                                ? 'drop-shadow-[0_0_8px_rgba(167,200,255,0.8)]' 
+                                : 'hover:fill-red-500/40'
+                            }`}
+                          />
+                        ))}
+                      </svg>
                     );
                   })()}
                 </div>
@@ -794,77 +902,6 @@ export default function Methods({ currentUser }: MethodsProps) {
                     </div>
                   </div>
                 </div>
-
-                <div className="p-4 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary">
-                  <Sigma size={32} />
-                </div>
-              </div>
-
-              {/* Chart Visualization */}
-              <div className="relative w-full aspect-video bg-[#08101f]/60 rounded-2xl border border-white/5 p-6 overflow-hidden">
-                {(() => {
-                  const allValid = regressionPoints
-                    .map((p, i) => ({ x: parseFloat(p.x), y: parseFloat(p.y), active: p.active, originalIndex: i }))
-                    .filter(p => !isNaN(p.x) && !isNaN(p.y));
-
-                  if (allValid.length === 0) return (
-                    <div className="h-full flex flex-col items-center justify-center text-white/10 gap-3">
-                      <TrendingUp size={48} className="opacity-5" />
-                      <span className="text-[10px] font-mono uppercase tracking-[0.3em]">Waiting for data points</span>
-                    </div>
-                  );
-
-                  const results = calculateRegression();
-                  const padding = 40;
-                  const width = 400;
-                  const height = 240;
-                  
-                  // Usamos todos os pontos para manter a escala do gráfico fixa
-                  const minX = Math.min(...allValid.map(p => p.x));
-                  const maxX = Math.max(...allValid.map(p => p.x));
-                  const minY = Math.min(...allValid.map(p => p.y));
-                  const maxY = Math.max(...allValid.map(p => p.y));
-                  
-                  const rangeX = (maxX - minX) || 1;
-                  const rangeY = (maxY - minY) || 1;
-                  
-                  const scaleX = (val: number) => padding + (val - minX) / rangeX * (width - 2 * padding);
-                  const scaleY = (val: number) => height - padding - (val - minY) / rangeY * (height - 2 * padding);
-
-                  return (
-                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-                      {/* Grid */}
-                      <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
-                      <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
-                      
-                      {/* Regression Line */}
-                      {results && (
-                        <line 
-                          x1={scaleX(minX)} y1={scaleY(results.slope * minX + results.intercept)} 
-                          x2={scaleX(maxX)} y2={scaleY(results.slope * maxX + results.intercept)} 
-                          stroke="#76f3ea" strokeWidth="2" strokeDasharray="4"
-                          className="opacity-60"
-                        />
-                      )}
-                      
-                      {/* Data Points */}
-                      {allValid.map((p) => (
-                        <circle 
-                          key={p.originalIndex} 
-                          cx={scaleX(p.x)} 
-                          cy={scaleY(p.y)} 
-                          r="5" 
-                          fill={p.active ? "#a7c8ff" : "rgba(239, 68, 68, 0.3)"}
-                          stroke={p.active ? "none" : "#ef4444"}
-                          strokeWidth={p.active ? "0" : "1"}
-                          onClick={() => togglePointActive(p.originalIndex)}
-                          className={`cursor-pointer transition-all duration-300 hover:r-7 ${p.active ? 'drop-shadow-[0_0_8px_rgba(167,200,255,0.8)]' : 'hover:fill-red-500/50'}`}
-                        />
-                      ))}
-                    </svg>
-                  );
-                })()}
-              </div>
             </div>
             <button className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2">
               Export Calibration Report

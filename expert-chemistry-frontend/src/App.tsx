@@ -121,7 +121,7 @@ export default function App() {
       case 'equipment': return <Equipment />;
       case 'reports': return <Reports currentUser={user} />;
       case 'clients': return <Clients />;
-      case 'methods': return <Methods />;
+      case 'methods': return <Methods currentUser={user} />;
       case 'settings': return <Settings />;
       case 'upload': return <FileUpload />;
       case 'user-management': return <UserManagement currentUser={user} />;
