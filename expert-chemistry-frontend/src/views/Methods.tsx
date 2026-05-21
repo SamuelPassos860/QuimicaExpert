@@ -17,6 +17,221 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function openPrintableCalibrationReport(payload: {
+  currentUser: AuthUser;
+  slope: number;
+  intercept: number;
+  r2: number;
+  points: { x: number; y: number }[];
+  sampleAbsorbance: number | null;
+  calculatedConcentration: number | null;
+}) {
+  const reportWindow = window.open('', '_blank', 'width=900,height=1200');
+
+  if (!reportWindow) {
+    window.alert('Unable to open the PDF preview window. Please allow pop-ups and try again.');
+    return false;
+  }
+
+  const generatedAt = new Date().toLocaleString('pt-BR');
+  const equation = `y = ${payload.slope.toFixed(6)}x ${payload.intercept >= 0 ? '+' : '-'} ${Math.abs(payload.intercept).toFixed(6)}`;
+  const sampleText = payload.sampleAbsorbance === null ? 'N/A' : formatNumber(payload.sampleAbsorbance);
+  const concentrationText = payload.calculatedConcentration === null ? 'N/A' : `${formatNumber(payload.calculatedConcentration)} mol/L`;
+  const pointRows = payload.points.map((point, index) => `
+    <tr>
+      <td>P${index + 1}</td>
+      <td>${escapeHtml(formatNumber(point.x))}</td>
+      <td>${escapeHtml(formatNumber(point.y))}</td>
+    </tr>
+  `).join('');
+  const chartWidth = 720;
+  const chartHeight = 320;
+  const chartPadding = { top: 28, right: 30, bottom: 52, left: 68 };
+  const xValues = payload.points.map((point) => point.x);
+  const yValues = payload.points.map((point) => point.y);
+  const rawMinX = Math.min(...xValues);
+  const rawMaxX = Math.max(...xValues);
+  const rawMinY = Math.min(...yValues);
+  const rawMaxY = Math.max(...yValues);
+  const xSpan = rawMaxX - rawMinX || 1;
+  const ySpan = rawMaxY - rawMinY || 1;
+  const minX = rawMinX - xSpan * 0.08;
+  const maxX = rawMaxX + xSpan * 0.08;
+  const minY = rawMinY - ySpan * 0.12;
+  const maxY = rawMaxY + ySpan * 0.12;
+  const plotWidth = chartWidth - chartPadding.left - chartPadding.right;
+  const plotHeight = chartHeight - chartPadding.top - chartPadding.bottom;
+  const scaleX = (value: number) => chartPadding.left + ((value - minX) / (maxX - minX || 1)) * plotWidth;
+  const scaleY = (value: number) => chartPadding.top + plotHeight - ((value - minY) / (maxY - minY || 1)) * plotHeight;
+  const lineStartY = payload.slope * minX + payload.intercept;
+  const lineEndY = payload.slope * maxX + payload.intercept;
+  const xTicks = Array.from({ length: 5 }, (_, index) => minX + ((maxX - minX) / 4) * index);
+  const yTicks = Array.from({ length: 5 }, (_, index) => minY + ((maxY - minY) / 4) * index);
+  const gridLines = [
+    ...xTicks.map((tick) => {
+      const x = scaleX(tick);
+      return `<line x1="${x}" y1="${chartPadding.top}" x2="${x}" y2="${chartPadding.top + plotHeight}" class="grid-line" />`;
+    }),
+    ...yTicks.map((tick) => {
+      const y = scaleY(tick);
+      return `<line x1="${chartPadding.left}" y1="${y}" x2="${chartPadding.left + plotWidth}" y2="${y}" class="grid-line" />`;
+    })
+  ].join('');
+  const xLabels = xTicks.map((tick) => {
+    const x = scaleX(tick);
+    return `<text x="${x}" y="${chartHeight - 22}" class="axis-label" text-anchor="middle">${escapeHtml(formatNumber(tick))}</text>`;
+  }).join('');
+  const yLabels = yTicks.map((tick) => {
+    const y = scaleY(tick);
+    return `<text x="${chartPadding.left - 12}" y="${y + 4}" class="axis-label" text-anchor="end">${escapeHtml(formatNumber(tick))}</text>`;
+  }).join('');
+  const chartPoints = payload.points.map((point, index) => `
+    <g>
+      <circle cx="${scaleX(point.x)}" cy="${scaleY(point.y)}" r="5.5" class="data-point" />
+      <text x="${scaleX(point.x) + 9}" y="${scaleY(point.y) - 7}" class="point-label">P${index + 1}</text>
+    </g>
+  `).join('');
+  const chartSvg = `
+    <svg viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="Calibration curve">
+      <rect x="0" y="0" width="${chartWidth}" height="${chartHeight}" class="chart-bg" />
+      ${gridLines}
+      <line x1="${chartPadding.left}" y1="${chartPadding.top + plotHeight}" x2="${chartPadding.left + plotWidth}" y2="${chartPadding.top + plotHeight}" class="axis-line" />
+      <line x1="${chartPadding.left}" y1="${chartPadding.top}" x2="${chartPadding.left}" y2="${chartPadding.top + plotHeight}" class="axis-line" />
+      <line x1="${scaleX(minX)}" y1="${scaleY(lineStartY)}" x2="${scaleX(maxX)}" y2="${scaleY(lineEndY)}" class="regression-line" />
+      ${chartPoints}
+      ${xLabels}
+      ${yLabels}
+      <text x="${chartPadding.left + plotWidth / 2}" y="${chartHeight - 6}" class="axis-title" text-anchor="middle">Concentration (X)</text>
+      <text x="18" y="${chartPadding.top + plotHeight / 2}" class="axis-title" text-anchor="middle" transform="rotate(-90 18 ${chartPadding.top + plotHeight / 2})">Absorbance (Y)</text>
+    </svg>
+  `;
+
+  const reportHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Linear Regression Report</title>
+        <style>
+          * { box-sizing: border-box; }
+          html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #e9eef6; color: #0b1f44; }
+          .page { width: 210mm; min-height: 297mm; max-width: 980px; margin: 30px auto; background: #ffffff; padding: 52px 60px 46px; box-shadow: 0 22px 70px rgba(15, 23, 42, 0.14); }
+          .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+          .brand { display: flex; align-items: center; gap: 16px; }
+          .brand-mark { width: 56px; height: 56px; border-radius: 12px; background: #123d82; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; }
+          .brand-title { margin: 0; font-size: 22px; color: #0c2d6b; }
+          .brand-subtitle { margin: 6px 0 0; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #5c8de0; }
+          .report-head { text-align: right; }
+          .report-title { margin: 0; font-size: 22px; color: #0b2c70; line-height: 1.2; }
+          .verified-pill { display: inline-flex; margin-top: 12px; padding: 6px 14px; border-radius: 999px; background: #7ce2dc; color: #0b5a63; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+          .report-id { margin: 10px 0 0; font-size: 12px; color: #52627f; }
+          .divider { margin: 20px 0 36px; border: 0; border-top: 2px solid #173b79; }
+          .summary-card { padding: 22px 24px; border-radius: 12px; border: 1px solid #c7d2e4; background: #eef3ff; }
+          .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 28px; }
+          .mini-label { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #68758d; font-weight: 700; }
+          .mini-value { margin: 0; font-size: 17px; font-weight: 700; color: #10234d; }
+          .mini-value.alt { color: #08646a; }
+          .content-grid { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 34px; }
+          .section-heading { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; font-size: 19px; color: #08276e; }
+          .section-heading::before { content: ""; width: 4px; height: 30px; border-radius: 999px; background: #0b7a7a; }
+          .details-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid #d8deea; border-radius: 10px; overflow: hidden; background: #ffffff; }
+          .details-cell { padding: 12px 16px 14px; border-right: 1px solid #d8deea; border-bottom: 1px solid #d8deea; }
+          .details-cell:nth-child(2n) { border-right: 0; }
+          .details-cell.full { grid-column: 1 / -1; border-right: 0; }
+          .chart-card { margin-top: 34px; padding: 18px 18px 10px; border: 1px solid #d8deea; border-radius: 12px; background: #fbfdff; break-before: page; page-break-before: always; }
+          .chart-card svg { display: block; width: 100%; height: auto; }
+          .chart-bg { fill: #ffffff; }
+          .grid-line { stroke: #d8deea; stroke-width: 1; }
+          .axis-line { stroke: #173b79; stroke-width: 2; }
+          .regression-line { stroke: #0b7a7a; stroke-width: 3; stroke-dasharray: 8 6; }
+          .data-point { fill: #123d82; stroke: #ffffff; stroke-width: 2; }
+          .point-label { fill: #52627f; font-size: 12px; font-weight: 700; }
+          .axis-label { fill: #68758d; font-size: 11px; }
+          .axis-title { fill: #173b79; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; border: 1px solid #d8deea; border-radius: 10px; overflow: hidden; }
+          th, td { padding: 11px 14px; border-bottom: 1px solid #d8deea; text-align: left; font-size: 13px; }
+          th { background: #eef3ff; color: #173b79; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+          tr:last-child td { border-bottom: 0; }
+          .footer { margin-top: 42px; padding-top: 20px; border-top: 1px solid #d8deea; display: flex; justify-content: space-between; gap: 24px; color: #68758d; font-size: 11px; }
+          @media print { body { background: #ffffff; } .page { margin: 0; box-shadow: none; width: auto; max-width: none; } }
+        </style>
+      </head>
+      <body>
+        <main class="page">
+          <header class="topbar">
+            <div class="brand">
+              <div class="brand-mark">Q</div>
+              <div>
+                <h1 class="brand-title">Expert Chemistry</h1>
+                <p class="brand-subtitle">Analytical Method Report</p>
+              </div>
+            </div>
+            <div class="report-head">
+              <h2 class="report-title">Linear Regression Calibration</h2>
+              <span class="verified-pill">Calculated</span>
+              <p class="report-id">Generated ${escapeHtml(generatedAt)}</p>
+            </div>
+          </header>
+          <hr class="divider" />
+          <section class="summary-card">
+            <div class="summary-grid">
+              <div><p class="mini-label">Equation</p><p class="mini-value alt">${escapeHtml(equation)}</p></div>
+              <div><p class="mini-label">Correlation</p><p class="mini-value">${escapeHtml(payload.r2.toFixed(6))}</p></div>
+              <div><p class="mini-label">Sample Absorbance</p><p class="mini-value">${escapeHtml(sampleText)}</p></div>
+              <div><p class="mini-label">Calculated Concentration</p><p class="mini-value alt">${escapeHtml(concentrationText)}</p></div>
+            </div>
+          </section>
+          <section class="content-grid">
+            <div>
+              <h3 class="section-heading">Model Parameters</h3>
+              <div class="details-card">
+                <div class="details-cell"><p class="mini-label">Slope</p><p class="mini-value">${escapeHtml(formatNumber(payload.slope))}</p></div>
+                <div class="details-cell"><p class="mini-label">Intercept</p><p class="mini-value">${escapeHtml(formatNumber(payload.intercept))}</p></div>
+                <div class="details-cell"><p class="mini-label">Active Points</p><p class="mini-value">${payload.points.length}</p></div>
+                <div class="details-cell"><p class="mini-label">Method</p><p class="mini-value">Least Squares</p></div>
+                <div class="details-cell full"><p class="mini-label">Generated By</p><p class="mini-value">${escapeHtml(payload.currentUser.fullName)} (${escapeHtml(payload.currentUser.userId)})</p></div>
+              </div>
+            </div>
+            <div>
+              <h3 class="section-heading">Calibration Points</h3>
+              <table>
+                <thead><tr><th>Point</th><th>X Concentration</th><th>Y Absorbance</th></tr></thead>
+                <tbody>${pointRows}</tbody>
+              </table>
+            </div>
+          </section>
+          <section class="chart-card">
+            <h3 class="section-heading">Calibration Curve</h3>
+            ${chartSvg}
+          </section>
+          <footer class="footer">
+            <span>Expert Chemistry analytical workflow</span>
+            <span>Confidential Lab Report</span>
+          </footer>
+        </main>
+      </body>
+    </html>
+  `;
+
+  reportWindow.document.open();
+  reportWindow.document.write(reportHtml);
+  reportWindow.document.close();
+  reportWindow.focus();
+  reportWindow.print();
+  return true;
+}
+
 interface MethodsProps {
   currentUser: AuthUser;
 }
@@ -34,6 +249,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [inputConcentration, setInputConcentration] = useState('0');
   const [targetWavelength, setTargetWavelength] = useState('');
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
+  const [lambertSerialTarget, setLambertSerialTarget] = useState<'sample' | 'blank'>('sample');
   const [isSerialConnected, setIsSerialConnected] = useState(false);
   const portRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,12 +260,21 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [newX, setNewX] = useState('');
   const [newY, setNewY] = useState('');
   const [sampleY, setSampleY] = useState('');
+  const [regressionSerialTarget, setRegressionSerialTarget] = useState<'point' | 'sample'>('point');
 
   // Ref para rastrear a aba ativa dentro do loop de leitura serial (evita stale closures)
   const activeTabRef = useRef(activeTab);
+  const lambertSerialTargetRef = useRef(lambertSerialTarget);
+  const regressionSerialTargetRef = useRef(regressionSerialTarget);
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+  useEffect(() => {
+    lambertSerialTargetRef.current = lambertSerialTarget;
+  }, [lambertSerialTarget]);
+  useEffect(() => {
+    regressionSerialTargetRef.current = regressionSerialTarget;
+  }, [regressionSerialTarget]);
 
   const addPoint = () => {
     if (newX.trim() && newY.trim()) {
@@ -141,8 +366,8 @@ export default function Methods({ currentUser }: MethodsProps) {
 
   const finalResult = calcMode === 'concentration' ? resultConcentration : resultAbsorbance;
 
-  // Função para exportar o relatório PDF de Lambert-Beer
-  const exportReportPdf = async () => {
+  // Gera o relatório imprimível sem salvar snapshot no banco.
+  const printLambertReport = () => {
     const payload = buildReportPayload(
       currentUser,
       {
@@ -158,13 +383,31 @@ export default function Methods({ currentUser }: MethodsProps) {
       }
     );
 
-    try {
-      await fetch('/api/reports', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    } catch (e) {
-      console.warn('Failed to save report snapshot:', e);
+    openPrintableReport(payload);
+  };
+
+  const printCalibrationReport = () => {
+    const results = calculateRegression();
+    const sampleAbsorbance = Number.parseFloat(sampleY.replace(',', '.'));
+
+    if (!results) {
+      window.alert('Add at least 5 active valid points before printing a calibration report.');
+      return;
     }
 
-    openPrintableReport(payload);
+    const calculatedSampleConcentration = !Number.isNaN(sampleAbsorbance) && results.slope !== 0
+      ? (sampleAbsorbance - results.intercept) / results.slope
+      : 0;
+
+    openPrintableCalibrationReport({
+      currentUser,
+      slope: results.slope,
+      intercept: results.intercept,
+      r2: results.r2,
+      points: results.points,
+      sampleAbsorbance: Number.isNaN(sampleAbsorbance) ? null : sampleAbsorbance,
+      calculatedConcentration: Number.isNaN(sampleAbsorbance) ? null : calculatedSampleConcentration
+    });
   };
 
   // Função para limpar todos os campos
@@ -240,11 +483,21 @@ export default function Methods({ currentUser }: MethodsProps) {
 
           if (activeTabRef.current === 'lambert-beer') {
             const { count } = processDataStream(text);
-            if (count === 0 && val) setAbsSample(val);
+            if (count === 0 && val) {
+              if (lambertSerialTargetRef.current === 'blank') {
+                setAbsBlank(val);
+              } else {
+                setAbsSample(val);
+              }
+            }
           } else if (activeTabRef.current === 'linear-regression') {
             // Na regressão, geralmente recebemos um valor por vez do equipamento
             if (val) {
-              setNewY(val);
+              if (regressionSerialTargetRef.current === 'sample') {
+                setSampleY(val);
+              } else {
+                setNewY(val);
+              }
             }
           }
         }
@@ -496,6 +749,34 @@ export default function Methods({ currentUser }: MethodsProps) {
                   Absorbance
                 </button>
               </div>
+
+              {calcMode === 'concentration' && (
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">Hardware reading target</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setLambertSerialTarget('sample')}
+                      className={`px-4 py-3 rounded-xl text-[10px] font-mono uppercase tracking-[0.18em] transition-all border ${
+                        lambertSerialTarget === 'sample'
+                          ? 'bg-primary text-on-primary border-primary'
+                          : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      Sample A
+                    </button>
+                    <button
+                      onClick={() => setLambertSerialTarget('blank')}
+                      className={`px-4 py-3 rounded-xl text-[10px] font-mono uppercase tracking-[0.18em] transition-all border ${
+                        lambertSerialTarget === 'blank'
+                          ? 'bg-secondary text-on-secondary border-secondary'
+                          : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      Blank A
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -596,8 +877,10 @@ export default function Methods({ currentUser }: MethodsProps) {
                     </h2>
                   </div>
                 </div>
-              <button
-                onClick={exportReportPdf}
+                <button
+                  onClick={() => {
+                    printLambertReport();
+                  }}
                   className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all w-full sm:w-auto"
                 >
                   <Download size={16} />
@@ -605,7 +888,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="hidden">
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Applied Formula</p>
                   <p className="text-white mt-2 font-semibold break-words">
@@ -637,7 +920,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 </div>
               </div>
 
-              <div className="rounded-[1.5rem] bg-[#08101f] border border-white/8 p-5 font-mono text-sm text-white/80">
+              <div className="hidden">
                 <p>--- FINAL REPORT ---</p>
                 <p className="mt-3">Method: Beer-Lambert Law Calculation</p>
                 <p>Mode: {calcMode === 'concentration' ? 'Quantification' : 'Absorbance Estimation'}</p>
@@ -702,6 +985,32 @@ export default function Methods({ currentUser }: MethodsProps) {
                 >
                   {isSerialConnected ? <Unlink size={18} /> : <Link size={18} />}
                   {isSerialConnected ? 'Online' : 'Hardware'}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">Hardware reading target</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setRegressionSerialTarget('point')}
+                  className={`px-4 py-3 rounded-xl text-[10px] font-mono uppercase tracking-[0.18em] transition-all border ${
+                    regressionSerialTarget === 'point'
+                      ? 'bg-primary text-on-primary border-primary'
+                      : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
+                  }`}
+                >
+                  Point Y
+                </button>
+                <button
+                  onClick={() => setRegressionSerialTarget('sample')}
+                  className={`px-4 py-3 rounded-xl text-[10px] font-mono uppercase tracking-[0.18em] transition-all border ${
+                    regressionSerialTarget === 'sample'
+                      ? 'bg-secondary text-on-secondary border-secondary'
+                      : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
+                  }`}
+                >
+                  Sample Y
                 </button>
               </div>
             </div>
@@ -903,8 +1212,14 @@ export default function Methods({ currentUser }: MethodsProps) {
                   </div>
                 </div>
             </div>
-            <button className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2">
-              Export Calibration Report
+            <button
+              onClick={() => {
+                printCalibrationReport();
+              }}
+              className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
+            >
+              <Download size={16} />
+              Print Calibration Report
             </button>
           </section>
         </div>
