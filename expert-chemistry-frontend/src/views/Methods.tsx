@@ -6,12 +6,18 @@ import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 type MethodTab = 'lambert-beer' | 'linear-regression';
 type ProjectMethodType = 'direct-proportion' | 'blank-correction' | 'transmittance-absorbance' | 'calibration-curve' | 'custom-formula';
 
+interface FormulaConstant {
+  name: string;
+  value: number;
+}
+
 interface ProjectMethod {
   id: string;
   name: string;
   expression: string;
   type: ProjectMethodType;
   tab?: MethodTab;
+  constants?: FormulaConstant[];
 }
 
 interface AnalyticalProject {
@@ -114,6 +120,234 @@ const methodTypeOptions: { value: ProjectMethodType; label: string; expression: 
 function parseDecimal(value: string) {
   const parsed = Number.parseFloat(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeFormulaName(value: string) {
+  const normalized = value
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+  if (!normalized) return '';
+  return /^[A-Za-z_]/.test(normalized) ? normalized : `v_${normalized}`;
+}
+
+type FormulaToken =
+  | { type: 'number'; value: number }
+  | { type: 'variable'; value: string }
+  | { type: 'operator'; value: '+' | '-' | '*' | '/' | '^' | 'u-' }
+  | { type: 'paren'; value: '(' | ')' };
+
+function isFormulaVariableToken(token: FormulaToken): token is Extract<FormulaToken, { type: 'variable' }> {
+  return token.type === 'variable';
+}
+
+const operatorConfig: Record<string, { precedence: number; associativity: 'left' | 'right' }> = {
+  '+': { precedence: 1, associativity: 'left' },
+  '-': { precedence: 1, associativity: 'left' },
+  '*': { precedence: 2, associativity: 'left' },
+  '/': { precedence: 2, associativity: 'left' },
+  '^': { precedence: 3, associativity: 'right' },
+  'u-': { precedence: 4, associativity: 'right' }
+};
+
+function getFormulaBody(expression: string) {
+  const equationParts = expression.split('=');
+  const rawBody = equationParts.length > 1 ? equationParts.slice(1).join('=') : expression;
+
+  return rawBody
+    .replace(/[×·]/g, '*')
+    .replace(/÷/g, '/')
+    .replace(/\s+x\s+/gi, ' * ')
+    .replace(/(\d),(\d)/g, '$1.$2')
+    .trim();
+}
+
+function tokenizeFormula(expression: string): { tokens: FormulaToken[]; error: string | null } {
+  const body = getFormulaBody(expression);
+  const tokens: FormulaToken[] = [];
+  let index = 0;
+  let previousToken: FormulaToken | null = null;
+
+  while (index < body.length) {
+    const char = body[index];
+
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+
+    if (/\d|\./.test(char)) {
+      const match = body.slice(index).match(/^\d*\.?\d+(?:e[-+]?\d+)?/i);
+      if (!match) {
+        return { tokens: [], error: `Invalid number near "${body.slice(index)}".` };
+      }
+      const value = Number.parseFloat(match[0]);
+      tokens.push({ type: 'number', value });
+      previousToken = tokens[tokens.length - 1];
+      index += match[0].length;
+      continue;
+    }
+
+    if (/[A-Za-z_]/.test(char)) {
+      const match = body.slice(index).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+      if (!match) {
+        return { tokens: [], error: `Invalid variable near "${body.slice(index)}".` };
+      }
+      tokens.push({ type: 'variable', value: match[0] });
+      previousToken = tokens[tokens.length - 1];
+      index += match[0].length;
+      continue;
+    }
+
+    if (char === '(' || char === ')') {
+      tokens.push({ type: 'paren', value: char });
+      previousToken = tokens[tokens.length - 1];
+      index += 1;
+      continue;
+    }
+
+    if ('+-*/^'.includes(char)) {
+      const isUnaryMinus = char === '-' && (
+        previousToken === null ||
+        previousToken.type === 'operator' ||
+        (previousToken.type === 'paren' && previousToken.value === '(')
+      );
+      const operatorValue = (isUnaryMinus ? 'u-' : char) as Extract<FormulaToken, { type: 'operator' }>['value'];
+      tokens.push({ type: 'operator', value: operatorValue });
+      previousToken = tokens[tokens.length - 1];
+      index += 1;
+      continue;
+    }
+
+    return { tokens: [], error: `Unsupported symbol "${char}".` };
+  }
+
+  return { tokens, error: null };
+}
+
+function toRpn(tokens: FormulaToken[]) {
+  const output: FormulaToken[] = [];
+  const operators: FormulaToken[] = [];
+
+  for (const token of tokens) {
+    if (token.type === 'number' || token.type === 'variable') {
+      output.push(token);
+      continue;
+    }
+
+    if (token.type === 'operator') {
+      const config = operatorConfig[token.value];
+      while (operators.length > 0) {
+        const top = operators[operators.length - 1];
+        if (top.type !== 'operator') break;
+
+        const topConfig = operatorConfig[top.value];
+        const shouldPop = config.associativity === 'left'
+          ? config.precedence <= topConfig.precedence
+          : config.precedence < topConfig.precedence;
+
+        if (!shouldPop) break;
+        output.push(operators.pop() as FormulaToken);
+      }
+      operators.push(token);
+      continue;
+    }
+
+    if (token.type === 'paren' && token.value === '(') {
+      operators.push(token);
+      continue;
+    }
+
+    if (token.type === 'paren' && token.value === ')') {
+      while (operators.length > 0 && !(operators[operators.length - 1].type === 'paren' && operators[operators.length - 1].value === '(')) {
+        output.push(operators.pop() as FormulaToken);
+      }
+
+      if (operators.length === 0) {
+        return { rpn: [], error: 'Mismatched parentheses.' };
+      }
+      operators.pop();
+    }
+  }
+
+  while (operators.length > 0) {
+    const token = operators.pop() as FormulaToken;
+    if (token.type === 'paren') return { rpn: [], error: 'Mismatched parentheses.' };
+    output.push(token);
+  }
+
+  return { rpn: output, error: null };
+}
+
+function evaluateCustomFormula(expression: string, variableValues: Record<string, string>, constants: FormulaConstant[] = []) {
+  const { tokens, error: tokenError } = tokenizeFormula(expression);
+  const constantMap = new Map(constants.map((constant) => [constant.name, constant.value]));
+  const variableNames: string[] = [];
+  for (const token of tokens) {
+    if (isFormulaVariableToken(token) && !constantMap.has(token.value)) {
+      variableNames.push(token.value);
+    }
+  }
+  const variables = Array.from(new Set(variableNames));
+
+  if (tokenError) return { variables, value: null, error: tokenError };
+  if (tokens.length === 0) return { variables, value: null, error: 'Write a formula to calculate.' };
+
+  const { rpn, error: rpnError } = toRpn(tokens);
+  if (rpnError) return { variables, value: null, error: rpnError };
+
+  const stack: number[] = [];
+  for (const token of rpn) {
+    if (token.type === 'number') {
+      stack.push(token.value);
+      continue;
+    }
+
+    if (token.type === 'variable') {
+      if (constantMap.has(token.value)) {
+        stack.push(constantMap.get(token.value) as number);
+        continue;
+      }
+
+      const rawValue = variableValues[token.value] ?? '';
+      if (rawValue.trim() === '') {
+        return { variables, value: null, error: `Enter a value for ${token.value}.` };
+      }
+      stack.push(parseDecimal(rawValue));
+      continue;
+    }
+
+    if (token.type === 'operator') {
+      if (token.value === 'u-') {
+        const value = stack.pop();
+        if (value === undefined) return { variables, value: null, error: 'Invalid formula.' };
+        stack.push(-value);
+        continue;
+      }
+
+      const right = stack.pop();
+      const left = stack.pop();
+      if (left === undefined || right === undefined) return { variables, value: null, error: 'Invalid formula.' };
+
+      if (token.value === '+') stack.push(left + right);
+      if (token.value === '-') stack.push(left - right);
+      if (token.value === '*') stack.push(left * right);
+      if (token.value === '/') {
+        if (right === 0) return { variables, value: null, error: 'Division by zero.' };
+        stack.push(left / right);
+      }
+      if (token.value === '^') stack.push(left ** right);
+    }
+  }
+
+  if (stack.length !== 1 || !Number.isFinite(stack[0])) {
+    return { variables, value: null, error: 'Invalid result.' };
+  }
+
+  return { variables, value: stack[0], error: null };
 }
 
 function openPrintableCalibrationReport(payload: {
@@ -322,6 +556,129 @@ function openPrintableCalibrationReport(payload: {
   return true;
 }
 
+function openPrintableProjectMethodReport(payload: {
+  currentUser: AuthUser;
+  project: AnalyticalProject;
+  method: ProjectMethod;
+  resultLabel: string;
+  resultValue: number | null;
+  resultUnit: string;
+  inputs: { label: string; value: string }[];
+}) {
+  const reportWindow = window.open('', '_blank', 'width=900,height=1200');
+
+  if (!reportWindow) {
+    window.alert('Unable to open the PDF preview window. Please allow pop-ups and try again.');
+    return false;
+  }
+
+  const generatedAt = new Date().toLocaleString('pt-BR');
+  const inputRows = payload.inputs.length ? payload.inputs.map((input) => `
+    <tr>
+      <td>${escapeHtml(input.label)}</td>
+      <td>${escapeHtml(input.value || 'N/A')}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="2">No inputs captured</td></tr>';
+  const resultText = payload.resultValue === null
+    ? 'N/A'
+    : `${formatNumber(payload.resultValue)} ${escapeHtml(payload.resultUnit)}`;
+
+  const reportHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Project Method Report</title>
+        <style>
+          * { box-sizing: border-box; }
+          html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #e9eef6; color: #0b1f44; }
+          .page { width: 210mm; min-height: 297mm; max-width: 980px; margin: 30px auto; background: #ffffff; padding: 52px 60px 46px; box-shadow: 0 22px 70px rgba(15, 23, 42, 0.14); }
+          .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+          .brand { display: flex; align-items: center; gap: 16px; }
+          .brand-mark { width: 56px; height: 56px; border-radius: 12px; background: #123d82; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; }
+          .brand-title { margin: 0; font-size: 22px; color: #0c2d6b; }
+          .brand-subtitle { margin: 6px 0 0; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #5c8de0; }
+          .report-head { text-align: right; }
+          .report-title { margin: 0; font-size: 22px; color: #0b2c70; line-height: 1.2; }
+          .verified-pill { display: inline-flex; margin-top: 12px; padding: 6px 14px; border-radius: 999px; background: #7ce2dc; color: #0b5a63; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+          .report-id { margin: 10px 0 0; font-size: 12px; color: #52627f; }
+          .divider { margin: 20px 0 36px; border: 0; border-top: 2px solid #173b79; }
+          .summary-card { padding: 22px 24px; border-radius: 12px; border: 1px solid #c7d2e4; background: #eef3ff; }
+          .mini-label { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #68758d; font-weight: 700; }
+          .mini-value { margin: 0; font-size: 17px; font-weight: 700; color: #10234d; }
+          .mini-value.alt { color: #08646a; }
+          .content-grid { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 34px; }
+          .section-heading { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; font-size: 19px; color: #08276e; }
+          .section-heading::before { content: ""; width: 4px; height: 30px; border-radius: 999px; background: #0b7a7a; }
+          .details-card { border: 1px solid #d8deea; border-radius: 10px; overflow: hidden; background: #ffffff; }
+          .details-cell { padding: 12px 16px 14px; border-bottom: 1px solid #d8deea; }
+          .details-cell:last-child { border-bottom: 0; }
+          table { width: 100%; border-collapse: collapse; border: 1px solid #d8deea; border-radius: 10px; overflow: hidden; }
+          th, td { padding: 11px 14px; border-bottom: 1px solid #d8deea; text-align: left; font-size: 13px; }
+          th { background: #eef3ff; color: #173b79; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+          tr:last-child td { border-bottom: 0; }
+          .footer { margin-top: 42px; padding-top: 20px; border-top: 1px solid #d8deea; display: flex; justify-content: space-between; gap: 24px; color: #68758d; font-size: 11px; }
+          @media print { body { background: #ffffff; } .page { margin: 0; box-shadow: none; width: auto; max-width: none; } }
+        </style>
+      </head>
+      <body>
+        <main class="page">
+          <header class="topbar">
+            <div class="brand">
+              <div class="brand-mark">Q</div>
+              <div>
+                <h1 class="brand-title">Expert Chemistry</h1>
+                <p class="brand-subtitle">Analytical Method Report</p>
+              </div>
+            </div>
+            <div class="report-head">
+              <h2 class="report-title">${escapeHtml(payload.method.name)}</h2>
+              <span class="verified-pill">Calculated</span>
+              <p class="report-id">Generated ${escapeHtml(generatedAt)}</p>
+            </div>
+          </header>
+          <hr class="divider" />
+          <section class="summary-card">
+            <p class="mini-label">${escapeHtml(payload.resultLabel)}</p>
+            <p class="mini-value alt">${escapeHtml(resultText)}</p>
+          </section>
+          <section class="content-grid">
+            <div>
+              <h3 class="section-heading">Method Details</h3>
+              <div class="details-card">
+                <div class="details-cell"><p class="mini-label">Project</p><p class="mini-value">${escapeHtml(payload.project.compound)}</p></div>
+                <div class="details-cell"><p class="mini-label">Method Type</p><p class="mini-value">${escapeHtml(payload.method.type)}</p></div>
+                <div class="details-cell"><p class="mini-label">Formula</p><p class="mini-value">${escapeHtml(payload.method.expression)}</p></div>
+                <div class="details-cell"><p class="mini-label">Generated By</p><p class="mini-value">${escapeHtml(payload.currentUser.fullName)} (${escapeHtml(payload.currentUser.userId)})</p></div>
+              </div>
+            </div>
+            <div>
+              <h3 class="section-heading">Inputs</h3>
+              <table>
+                <thead><tr><th>Input</th><th>Value</th></tr></thead>
+                <tbody>${inputRows}</tbody>
+              </table>
+            </div>
+          </section>
+          <footer class="footer">
+            <span>Expert Chemistry analytical workflow</span>
+            <span>Confidential Lab Report</span>
+          </footer>
+        </main>
+      </body>
+    </html>
+  `;
+
+  reportWindow.document.open();
+  reportWindow.document.write(reportHtml);
+  reportWindow.document.close();
+  reportWindow.focus();
+  reportWindow.print();
+  return true;
+}
+
 interface MethodsProps {
   currentUser: AuthUser;
 }
@@ -332,19 +689,31 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectLibrary[0].id);
   const [openedProjectId, setOpenedProjectId] = useState<string | null>(null);
   const [selectedMethodId, setSelectedMethodId] = useState(initialProjectLibrary[0].methods[0].id);
+  const [projectMode, setProjectMode] = useState<'workspace' | 'method-builder'>('workspace');
   const [projectSearch, setProjectSearch] = useState('');
   const [newProjectCompound, setNewProjectCompound] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [newMethodName, setNewMethodName] = useState('');
   const [newMethodType, setNewMethodType] = useState<ProjectMethodType>('direct-proportion');
   const [newMethodExpression, setNewMethodExpression] = useState('');
+  const [formulaBuilderVariables, setFormulaBuilderVariables] = useState<string[]>([]);
+  const [formulaBuilderConstants, setFormulaBuilderConstants] = useState<FormulaConstant[]>([]);
+  const [newVariableName, setNewVariableName] = useState('');
+  const [newConstantName, setNewConstantName] = useState('');
+  const [newConstantValue, setNewConstantValue] = useState('');
+  const [sequencePrefix, setSequencePrefix] = useState('Abs');
+  const [sequenceStart, setSequenceStart] = useState('0');
+  const [sequenceStep, setSequenceStep] = useState('1');
+  const [sequenceCount, setSequenceCount] = useState('3');
   const [methodInputs, setMethodInputs] = useState({
     sampleAbsorbance: '',
     standardAbsorbance: '',
     standardConcentration: '',
+    concentrationUnit: 'mg/L',
     blankAbsorbance: '',
     transmittance: ''
   });
+  const [customFormulaInputs, setCustomFormulaInputs] = useState<Record<string, string>>({});
   
   // States para a Calculadora Lambert-Beer
   const [calcMode, setCalcMode] = useState<'concentration' | 'absorbance'>('concentration');
@@ -378,6 +747,9 @@ export default function Methods({ currentUser }: MethodsProps) {
   const openedProject = projects.find((project) => project.id === openedProjectId) ?? null;
   const selectedMethod = openedProject?.methods.find((method) => method.id === selectedMethodId) ?? openedProject?.methods[0] ?? null;
   const selectedMethodType = methodTypeOptions.find((option) => option.value === newMethodType) ?? methodTypeOptions[0];
+  const customFormulaResult = selectedMethod?.type === 'custom-formula'
+    ? evaluateCustomFormula(selectedMethod.expression, customFormulaInputs, selectedMethod.constants)
+    : null;
 
   // Ref para rastrear a aba ativa dentro do loop de leitura serial (evita stale closures)
   const activeTabRef = useRef(activeTab);
@@ -436,6 +808,26 @@ export default function Methods({ currentUser }: MethodsProps) {
     setSelectedProjectId(project.id);
     setOpenedProjectId(project.id);
     setSelectedMethodId(project.methods[0]?.id ?? '');
+    setProjectMode('workspace');
+  };
+
+  const openLibraryRoot = () => {
+    setActiveTab('library');
+    setOpenedProjectId(null);
+    setProjectMode('workspace');
+  };
+
+  const openCalculatorTab = (tab: 'lambert-beer' | 'linear-regression') => {
+    setActiveTab(tab);
+  };
+
+  const openMethodBuilder = () => {
+    setProjectMode('method-builder');
+    setNewMethodType('custom-formula');
+  };
+
+  const closeMethodBuilder = () => {
+    setProjectMode('workspace');
   };
 
   const getMethodTargetTab = (method: ProjectMethod): MethodTab | null => {
@@ -465,8 +857,68 @@ export default function Methods({ currentUser }: MethodsProps) {
     }
   };
 
+  const deleteProjectMethod = (projectId: string, methodId: string) => {
+    setProjects((currentProjects) => currentProjects.map((project) => {
+      if (project.id !== projectId) return project;
+
+      return {
+        ...project,
+        methods: project.methods.filter((method) => method.id !== methodId)
+      };
+    }));
+
+    if (selectedMethodId === methodId) {
+      const project = projects.find((currentProject) => currentProject.id === projectId);
+      const nextMethod = project?.methods.find((method) => method.id !== methodId);
+      setSelectedMethodId(nextMethod?.id ?? '');
+    }
+  };
+
+  const appendFormulaToken = (token: string) => {
+    setNewMethodExpression((currentExpression) => {
+      const trimmedExpression = currentExpression.trim();
+      return trimmedExpression ? `${trimmedExpression} ${token}` : token;
+    });
+  };
+
+  const addFormulaBuilderVariable = (rawName: string) => {
+    const variableName = normalizeFormulaName(rawName);
+    if (!variableName) return;
+
+    setFormulaBuilderVariables((currentVariables) => (
+      currentVariables.includes(variableName) ? currentVariables : [...currentVariables, variableName]
+    ));
+    appendFormulaToken(variableName);
+    setNewVariableName('');
+  };
+
+  const addFormulaBuilderSequence = (prefixOverride?: string) => {
+    const prefix = normalizeFormulaName(prefixOverride ?? sequencePrefix) || 'Var';
+    const start = Math.max(0, Math.trunc(parseDecimal(sequenceStart)));
+    const step = Math.max(1, Math.trunc(parseDecimal(sequenceStep)));
+    const count = Math.min(24, Math.max(1, Math.trunc(parseDecimal(sequenceCount))));
+    const sequenceVariables = Array.from({ length: count }, (_, index) => `${prefix}_${start + index * step}s`);
+
+    setFormulaBuilderVariables((currentVariables) => Array.from(new Set([...currentVariables, ...sequenceVariables])));
+  };
+
+  const addFormulaBuilderConstant = () => {
+    const constantName = normalizeFormulaName(newConstantName);
+    const constantValue = parseDecimal(newConstantValue);
+    if (!constantName || !Number.isFinite(constantValue)) return;
+
+    setFormulaBuilderConstants((currentConstants) => {
+      const withoutExisting = currentConstants.filter((constant) => constant.name !== constantName);
+      return [...withoutExisting, { name: constantName, value: constantValue }];
+    });
+    appendFormulaToken(constantName);
+    setNewConstantName('');
+    setNewConstantValue('');
+  };
+
   const createCustomMethod = () => {
     if (!openedProject) return;
+    if (newMethodType === 'custom-formula' && !newMethodExpression.trim()) return;
 
     const methodName = newMethodName.trim() || selectedMethodType.label;
     const methodExpression = newMethodType === 'custom-formula'
@@ -479,7 +931,8 @@ export default function Methods({ currentUser }: MethodsProps) {
       name: methodName,
       expression: methodExpression,
       type: newMethodType,
-      tab: newMethodType === 'blank-correction' || newMethodType === 'transmittance-absorbance' ? 'lambert-beer' : 'linear-regression'
+      tab: newMethodType === 'blank-correction' || newMethodType === 'transmittance-absorbance' ? 'lambert-beer' : 'linear-regression',
+      constants: newMethodType === 'custom-formula' ? formulaBuilderConstants : undefined
     };
 
     setProjects((currentProjects) => currentProjects.map((project) => (
@@ -491,14 +944,22 @@ export default function Methods({ currentUser }: MethodsProps) {
     setNewMethodName('');
     setNewMethodExpression('');
     setNewMethodType('direct-proportion');
+    setFormulaBuilderVariables([]);
+    setFormulaBuilderConstants([]);
 
     if (newMethod.type === 'calibration-curve') {
       setActiveTab('linear-regression');
+    } else {
+      setProjectMode('workspace');
     }
   };
 
   const updateMethodInput = (field: keyof typeof methodInputs, value: string) => {
     setMethodInputs((currentInputs) => ({ ...currentInputs, [field]: value }));
+  };
+
+  const updateCustomFormulaInput = (variable: string, value: string) => {
+    setCustomFormulaInputs((currentInputs) => ({ ...currentInputs, [variable]: value }));
   };
 
   const calculateProjectMethod = (method: ProjectMethod | null) => {
@@ -507,6 +968,7 @@ export default function Methods({ currentUser }: MethodsProps) {
     const sampleAbsorbance = parseDecimal(methodInputs.sampleAbsorbance);
     const standardAbsorbance = parseDecimal(methodInputs.standardAbsorbance);
     const standardConcentration = parseDecimal(methodInputs.standardConcentration);
+    const concentrationUnit = methodInputs.concentrationUnit.trim() || 'concentration units';
     const blankAbsorbance = parseDecimal(methodInputs.blankAbsorbance);
     const transmittance = parseDecimal(methodInputs.transmittance);
 
@@ -515,7 +977,7 @@ export default function Methods({ currentUser }: MethodsProps) {
       return {
         label: 'Calculated sample concentration',
         value: (sampleAbsorbance * standardConcentration) / standardAbsorbance,
-        unit: 'concentration units'
+        unit: concentrationUnit
       };
     }
 
@@ -537,6 +999,69 @@ export default function Methods({ currentUser }: MethodsProps) {
     }
 
     return null;
+  };
+
+  const printProjectMethodReport = () => {
+    if (!openedProject || !selectedMethod) return;
+
+    if (selectedMethod.type === 'calibration-curve') {
+      setActiveTab('linear-regression');
+      return;
+    }
+
+    const inputs: { label: string; value: string }[] = [];
+    let resultLabel = 'Result';
+    let resultValue: number | null = null;
+    let resultUnit = '';
+
+    if (selectedMethod.type === 'custom-formula') {
+      const result = evaluateCustomFormula(selectedMethod.expression, customFormulaInputs, selectedMethod.constants);
+      resultLabel = 'Formula Result';
+      resultValue = result.value;
+      inputs.push(...result.variables.map((variable) => ({
+        label: variable,
+        value: customFormulaInputs[variable] ?? ''
+      })));
+      inputs.push(...(selectedMethod.constants ?? []).map((constant) => ({
+        label: `${constant.name} (constant)`,
+        value: String(constant.value)
+      })));
+    } else {
+      const result = calculateProjectMethod(selectedMethod);
+      resultLabel = result?.label ?? 'Result';
+      resultValue = result?.value ?? null;
+      resultUnit = result?.unit ?? '';
+
+      if (selectedMethod.type === 'direct-proportion') {
+        inputs.push(
+          { label: 'Sample absorbance', value: methodInputs.sampleAbsorbance },
+          { label: 'Standard absorbance', value: methodInputs.standardAbsorbance },
+          { label: 'Standard concentration', value: methodInputs.standardConcentration },
+          { label: 'Concentration unit', value: methodInputs.concentrationUnit }
+        );
+      }
+
+      if (selectedMethod.type === 'blank-correction') {
+        inputs.push(
+          { label: 'Sample absorbance', value: methodInputs.sampleAbsorbance },
+          { label: 'Blank absorbance', value: methodInputs.blankAbsorbance }
+        );
+      }
+
+      if (selectedMethod.type === 'transmittance-absorbance') {
+        inputs.push({ label: 'Transmittance (%)', value: methodInputs.transmittance });
+      }
+    }
+
+    openPrintableProjectMethodReport({
+      currentUser,
+      project: openedProject,
+      method: selectedMethod,
+      resultLabel,
+      resultValue,
+      resultUnit,
+      inputs
+    });
   };
 
   const removePoint = (index: number) => {
@@ -853,7 +1378,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
       <div className="flex flex-wrap gap-3">
         <button
-          onClick={() => setActiveTab('library')}
+          onClick={openLibraryRoot}
           className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
             activeTab === 'library'
               ? 'bg-primary text-on-primary border-primary shadow-[0_0_30px_rgba(167,200,255,0.2)]'
@@ -863,7 +1388,7 @@ export default function Methods({ currentUser }: MethodsProps) {
           Project Library
         </button>
         <button
-          onClick={() => setActiveTab('lambert-beer')}
+          onClick={() => openCalculatorTab('lambert-beer')}
           className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
             activeTab === 'lambert-beer'
               ? 'bg-primary text-on-primary border-primary shadow-[0_0_30px_rgba(167,200,255,0.2)]'
@@ -873,7 +1398,7 @@ export default function Methods({ currentUser }: MethodsProps) {
           Lambert-Beer Calc
         </button>
         <button
-          onClick={() => setActiveTab('linear-regression')}
+          onClick={() => openCalculatorTab('linear-regression')}
           className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
             activeTab === 'linear-regression'
               ? 'bg-primary text-on-primary border-primary shadow-[0_0_30px_rgba(167,200,255,0.2)]'
@@ -886,6 +1411,177 @@ export default function Methods({ currentUser }: MethodsProps) {
 
       {activeTab === 'library' ? (
         openedProject ? (
+          projectMode === 'method-builder' ? (
+          <div className="space-y-5">
+            <section className="glass-panel rounded-2xl p-5 border-white/[0.03]">
+              <div className="flex items-start gap-4">
+                <button
+                  onClick={closeMethodBuilder}
+                  className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-white/45 hover:text-white hover:bg-white/[0.08] transition-all"
+                  title="Back to project"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Formula Method Builder</p>
+                  <h2 className="text-2xl font-display font-bold text-white mt-2">{openedProject.compound}</h2>
+                  <p className="text-sm text-white/45 mt-2 max-w-3xl leading-relaxed">
+                    Create a custom calculation method with variables, time sequences, blank readings and constants.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="glass-panel rounded-2xl p-5 space-y-5 border-primary/10">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
+                <label className="block space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Method name</span>
+                  <input
+                    value={newMethodName}
+                    onChange={(event) => setNewMethodName(event.target.value)}
+                    className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                    placeholder="Ex: Kinetic absorbance correction"
+                  />
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Calculation type</span>
+                  <select
+                    value={newMethodType}
+                    onChange={(event) => setNewMethodType(event.target.value as ProjectMethodType)}
+                    className="w-full rounded-xl bg-[#08101f] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                  >
+                    {methodTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Formula</span>
+                <textarea
+                  value={newMethodType === 'custom-formula' ? newMethodExpression : selectedMethodType.expression}
+                  onChange={(event) => setNewMethodExpression(event.target.value)}
+                  disabled={newMethodType !== 'custom-formula'}
+                  rows={4}
+                  className="w-full resize-none rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25 disabled:text-white/45 disabled:cursor-not-allowed"
+                  placeholder="Ex: result = (Abs_2s - Blank_2s) * Factor"
+                />
+                {newMethodType === 'custom-formula' && (
+                  <p className="text-[10px] text-white/35 leading-relaxed">
+                    Use variables without spaces. Constants saved below can be inserted in the formula but will not become unknown inputs.
+                  </p>
+                )}
+              </label>
+
+              {newMethodType === 'custom-formula' && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-5">
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Formula Builder</p>
+                      <p className="text-sm text-white/45 mt-2 leading-relaxed">
+                        Create variables for equipment readings, time sequences and constants, then click them to assemble the formula.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['+', '-', '*', '/', '^', '(', ')'].map((operator) => (
+                        <button
+                          key={operator}
+                          onClick={() => appendFormulaToken(operator)}
+                          className="h-9 min-w-9 rounded-lg bg-white/[0.05] border border-white/10 px-3 text-sm font-mono text-white/70 hover:text-primary hover:border-primary/25 transition-all"
+                        >
+                          {operator}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4 space-y-3">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Single variable</p>
+                      <div className="flex gap-2">
+                        <input
+                          value={newVariableName}
+                          onChange={(event) => setNewVariableName(event.target.value)}
+                          className="w-full rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                          placeholder="Abs_0s, Blank, A_sample"
+                        />
+                        <button onClick={() => addFormulaBuilderVariable(newVariableName)} className="px-3 rounded-lg bg-primary text-on-primary" title="Add variable">
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4 space-y-3">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Time sequence</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                        <input value={sequencePrefix} onChange={(event) => setSequencePrefix(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="Abs" />
+                        <input type="number" value={sequenceStart} onChange={(event) => setSequenceStart(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="0" />
+                        <input type="number" value={sequenceStep} onChange={(event) => setSequenceStep(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="1" />
+                        <input type="number" value={sequenceCount} onChange={(event) => setSequenceCount(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="3" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => addFormulaBuilderSequence()} className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-primary hover:bg-primary hover:text-on-primary transition-all">Add sequence</button>
+                        <button onClick={() => addFormulaBuilderSequence('Blank')} className="rounded-lg bg-secondary/10 border border-secondary/20 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-secondary hover:bg-secondary hover:text-on-secondary transition-all">Blank sequence</button>
+                      </div>
+                      <p className="text-[10px] text-white/30">Prefix, start second, interval and count.</p>
+                    </div>
+
+                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4 space-y-3">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Constants</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                        <input value={newConstantName} onChange={(event) => setNewConstantName(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40 placeholder:text-white/25" placeholder="Factor" />
+                        <input type="number" step="any" value={newConstantValue} onChange={(event) => setNewConstantValue(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40 placeholder:text-white/25" placeholder="10" />
+                        <button onClick={addFormulaBuilderConstant} className="px-3 rounded-lg bg-primary text-on-primary" title="Add constant">
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35 mb-3">Variables</p>
+                      <div className="flex flex-wrap gap-2">
+                        {formulaBuilderVariables.length ? formulaBuilderVariables.map((variable) => (
+                          <button key={variable} onClick={() => appendFormulaToken(variable)} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-widest text-primary hover:bg-primary hover:text-on-primary transition-all">
+                            {variable}
+                          </button>
+                        )) : (
+                          <span className="text-sm text-white/35">No variables created yet.</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35 mb-3">Saved constants</p>
+                      <div className="flex flex-wrap gap-2">
+                        {formulaBuilderConstants.length ? formulaBuilderConstants.map((constant) => (
+                          <button key={constant.name} onClick={() => appendFormulaToken(constant.name)} className="rounded-lg border border-secondary/20 bg-secondary/10 px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-widest text-secondary hover:bg-secondary hover:text-on-secondary transition-all" title={`${constant.name} = ${constant.value}`}>
+                            {constant.name} = {constant.value}
+                          </button>
+                        )) : (
+                          <span className="text-sm text-white/35">No constants saved yet.</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button onClick={createCustomMethod} disabled={newMethodType === 'custom-formula' && !newMethodExpression.trim()} className="w-full sm:w-auto px-8 py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  <Plus size={16} />
+                  Add Method
+                </button>
+                <button onClick={closeMethodBuilder} className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white/[0.04] border border-white/10 text-white/55 text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all">
+                  Cancel
+                </button>
+              </div>
+            </section>
+          </div>
+          ) : (
           <div className="space-y-5">
             <section className="space-y-5">
               <div className="glass-panel rounded-2xl p-5 border-white/[0.03]">
@@ -937,7 +1633,28 @@ export default function Methods({ currentUser }: MethodsProps) {
                               <p className="text-white font-semibold break-words">{method.name}</p>
                               <p className="text-[10px] font-mono text-primary/80 mt-2 break-words">{method.expression}</p>
                             </div>
-                            <Calculator size={16} className={isActive ? 'text-primary shrink-0' : 'text-white/25 shrink-0'} />
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Calculator size={16} className={isActive ? 'text-primary' : 'text-white/25'} />
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                title="Delete method"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteProjectMethod(openedProject.id, method.id);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    deleteProjectMethod(openedProject.id, method.id);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg text-white/20 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                              >
+                                <Trash2 size={15} />
+                              </span>
+                            </div>
                           </div>
                           <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-3">
                             {methodType?.label ?? 'Custom method'}
@@ -970,8 +1687,49 @@ export default function Methods({ currentUser }: MethodsProps) {
                       This method uses the linear regression calculator. Open it to add calibration points, calculate the equation and quantify the sample from absorbance.
                     </div>
                   ) : selectedMethod?.type === 'custom-formula' ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-sm text-white/45 leading-relaxed">
-                      Custom formula execution will use the formula builder in the next iteration. For now this method is stored in the project and can be opened in the advanced calculator when applicable.
+                    <div className="space-y-5">
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Recognized variables</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {customFormulaResult?.variables.length ? customFormulaResult.variables.map((variable) => (
+                            <span key={variable} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest text-primary">
+                              {variable}
+                            </span>
+                          )) : (
+                            <span className="text-sm text-white/35">No variables found yet.</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {customFormulaResult?.variables.length ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {customFormulaResult.variables.map((variable) => (
+                            <label key={variable} className="block space-y-2">
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{variable}</span>
+                              <input
+                                type="number"
+                                step="any"
+                                value={customFormulaInputs[variable] ?? ''}
+                                onChange={(event) => updateCustomFormulaInput(variable, event.target.value)}
+                                className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                                placeholder="0.000"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-5">
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">
+                          Formula Result
+                        </p>
+                        <p className="text-3xl font-display font-bold text-white mt-3">
+                          {customFormulaResult?.value !== null && customFormulaResult?.value !== undefined ? formatNumber(customFormulaResult.value) : '---'}
+                        </p>
+                        {customFormulaResult?.error && (
+                          <p className="text-xs text-white/45 mt-3">{customFormulaResult.error}</p>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-5">
@@ -1012,6 +1770,15 @@ export default function Methods({ currentUser }: MethodsProps) {
                                 onChange={(event) => updateMethodInput('standardConcentration', event.target.value)}
                                 className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                                 placeholder="0.000"
+                              />
+                            </label>
+                            <label className="block space-y-2">
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Sample concentration unit</span>
+                              <input
+                                value={methodInputs.concentrationUnit}
+                                onChange={(event) => updateMethodInput('concentrationUnit', event.target.value)}
+                                className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                                placeholder="mg/L, mol/L, ppm..."
                               />
                             </label>
                           </>
@@ -1063,65 +1830,31 @@ export default function Methods({ currentUser }: MethodsProps) {
                       })()}
                     </div>
                   )}
+
+                  {selectedMethod && selectedMethod.type !== 'calibration-curve' && (
+                    <button
+                      onClick={printProjectMethodReport}
+                      className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
+                    >
+                      <Download size={16} />
+                      Print Method Report
+                    </button>
+                  )}
                 </div>
               </div>
             </section>
 
-            <section className="glass-panel rounded-2xl p-5 space-y-5 border-primary/10">
-              <div className="max-w-3xl">
-                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Create Method</p>
-                <h2 className="text-xl font-display font-bold text-white mt-2">Custom Calculation</h2>
-                <p className="text-sm text-white/45 mt-2 leading-relaxed">
-                  Add a method to this project. Start with rule of three, blank correction, transmittance conversion, or store a custom formula.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <label className="block space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Method name</span>
-                  <input
-                    value={newMethodName}
-                    onChange={(event) => setNewMethodName(event.target.value)}
-                    className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
-                    placeholder="Ex: Sample quantification"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Calculation type</span>
-                  <select
-                    value={newMethodType}
-                    onChange={(event) => setNewMethodType(event.target.value as ProjectMethodType)}
-                    className="w-full rounded-xl bg-[#08101f] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
-                  >
-                    {methodTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block space-y-2 lg:col-span-1">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Formula</span>
-                  <textarea
-                    value={newMethodType === 'custom-formula' ? newMethodExpression : selectedMethodType.expression}
-                    onChange={(event) => setNewMethodExpression(event.target.value)}
-                    disabled={newMethodType !== 'custom-formula'}
-                    rows={3}
-                    className="w-full resize-none rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25 disabled:text-white/45 disabled:cursor-not-allowed"
-                    placeholder="Describe the formula..."
-                  />
-                </label>
-              </div>
-
+            <section className="glass-panel rounded-2xl p-5 border-primary/10">
               <button
-                onClick={createCustomMethod}
-                className="w-full lg:w-auto px-8 py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all flex items-center justify-center gap-2"
+                onClick={openMethodBuilder}
+                className="w-full py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all flex items-center justify-center gap-2"
               >
                 <Plus size={16} />
-                Add Method
+                Create Custom Method
               </button>
             </section>
           </div>
+          )
         ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
           <section className="glass-panel rounded-2xl border-white/[0.03] overflow-hidden">
@@ -1450,7 +2183,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                   onClick={() => {
                     printLambertReport();
                   }}
-                  className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all w-full sm:w-auto"
+                  className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
                 >
                   <Download size={16} />
                   Print PDF Report
