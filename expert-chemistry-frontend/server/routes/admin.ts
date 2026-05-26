@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { AUDIT_EVENT_TYPES, AUDIT_RESOURCE_TYPES, type AuditLogEventType, type AuditLogResourceType } from '../types/audit.ts';
-import { createUser, isDuplicateUserIdError, listUsers, updateUserRole } from '../services/auth.ts';
-import { listAuditLogs } from '../services/audit.ts';
-import type { AdminCreateUserBody, UserRoleUpdateBody } from '../types/auth.ts';
-import { validateAdminCreateUser, validateRoleUpdate } from '../validators/auth.ts';
+import { AUDIT_EVENT_TYPES, AUDIT_RESOURCE_TYPES, type AuditLogEventType, type AuditLogResourceType } from '../types/audit.js';
+import { createUser, isDuplicateUserIdError, listUsers, updateUserRole } from '../services/auth.js';
+import { listAuditLogs } from '../services/audit.js';
+import type { AdminCreateUserBody, UserRoleUpdateBody } from '../types/auth.js';
+import { validateAdminCreateUser, validateRoleUpdate } from '../validators/auth.js';
 
 const router = Router();
 

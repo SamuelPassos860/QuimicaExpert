@@ -1,7 +1,7 @@
-import { pool } from '../db.ts';
-import type { AuthUser } from '../types/auth.ts';
-import type { CompoundRow } from '../types/chemistry.ts';
-import { parseChemicalNumber } from '../utils/chemistry.ts';
+import { pool } from '../db.js';
+import type { AuthUser } from '../types/auth.js';
+import type { CompoundRow } from '../types/chemistry.js';
+import { parseChemicalNumber } from '../utils/chemistry.js';
 
 interface DashboardUserRow {
   id: number;

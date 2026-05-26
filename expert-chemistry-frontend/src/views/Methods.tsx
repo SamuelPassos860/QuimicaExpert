@@ -302,7 +302,7 @@ function evaluateCustomFormula(expression: string, variableValues: Record<string
   const stack: number[] = [];
   for (const token of rpn) {
     if (token.type === 'number') {
-      stack.push(token.value);
+      stack.push(token.value);''
       continue;
     }
 
