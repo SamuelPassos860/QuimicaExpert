@@ -1,13 +1,70 @@
 import { useState, useRef, useEffect } from 'react';
-import { FileCode, Play, Edit2, Copy, Shield, Sigma, Waves, Calculator, Cpu, Link, Unlink, FileUp, RotateCcw, TrendingUp, Plus, Trash2, CheckCircle2, Circle, Download, Sparkles, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Calculator, Copy, Sigma, Waves, Link, Unlink, FileUp, RotateCcw, TrendingUp, Plus, Trash2, CheckCircle2, Circle, Download, Sparkles, FlaskConical, Search } from 'lucide-react';
 import type { AuthUser } from '../types/auth';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
-const methods = [
-  { id: 'MTD-01', name: 'Alkaloid Extraction V2', author: 'Dr. Aris Thorne', lastAccess: 'Yesterday', version: '2.4.1', status: 'Approved' },
-  { id: 'MTD-02', name: 'Trace Metal Quantification', author: 'Elena Rossi', lastAccess: '3 days ago', version: '1.0.8', status: 'Draft' },
-  { id: 'MTD-03', name: 'Organoleptic Testing Suite', author: 'AI Core', lastAccess: '1 week ago', version: '4.2.0', status: 'Automated' },
-  { id: 'MTD-04', name: 'Rapid Pesticide Screening', author: 'Kevin Wu', lastAccess: '2 weeks ago', version: '3.1.2', status: 'Approved' },
+type MethodTab = 'lambert-beer' | 'linear-regression';
+type ProjectMethodType = 'direct-proportion' | 'blank-correction' | 'transmittance-absorbance' | 'calibration-curve' | 'custom-formula';
+
+interface ProjectMethod {
+  id: string;
+  name: string;
+  expression: string;
+  type: ProjectMethodType;
+  tab?: MethodTab;
+}
+
+interface AnalyticalProject {
+  id: string;
+  compound: string;
+  matrix: string;
+  wavelength: string;
+  status: 'Ready' | 'Draft' | 'Template';
+  description: string;
+  inputs: string[];
+  methods: ProjectMethod[];
+}
+
+const initialProjectLibrary: AnalyticalProject[] = [
+  {
+    id: 'PRJ-CAF',
+    compound: 'Caffeine',
+    matrix: 'Beverages and extracts',
+    wavelength: '273 nm',
+    status: 'Ready',
+    description: 'Project for quantifying caffeine by UV reading using a known standard, sample absorbance and dilution factor.',
+    inputs: ['Standard absorbance', 'Standard concentration', 'Sample absorbance', 'Dilution'],
+    methods: [
+      { id: 'MTD-CAF-01', name: 'Direct proportion', expression: 'C sample = (A sample x C standard) / A standard', type: 'direct-proportion', tab: 'linear-regression' as const },
+      { id: 'MTD-CAF-02', name: 'Calibration curve', expression: 'y = mx + b; x = (y - b) / m', type: 'calibration-curve', tab: 'linear-regression' as const }
+    ]
+  },
+  {
+    id: 'PRJ-FE',
+    compound: 'Total iron',
+    matrix: 'Water and effluents',
+    wavelength: '510 nm',
+    status: 'Draft',
+    description: 'Project for colorimetric methods with blank correction, analytical curve and corrected absorbance reading.',
+    inputs: ['Blank absorbance', 'Sample absorbance', 'Curve points', 'Final volume'],
+    methods: [
+      { id: 'MTD-FE-01', name: 'Corrected absorbance', expression: 'A corrected = A sample - A blank', type: 'blank-correction', tab: 'lambert-beer' as const },
+      { id: 'MTD-FE-02', name: 'Linear regression', expression: 'Concentration = (A corrected - b) / m', type: 'calibration-curve', tab: 'linear-regression' as const }
+    ]
+  },
+  {
+    id: 'PRJ-DYE',
+    compound: 'Blue dye',
+    matrix: 'Finished product',
+    wavelength: '620 nm',
+    status: 'Template',
+    description: 'Project for a simple standard-to-sample comparison with transmittance converted into absorbance.',
+    inputs: ['Transmittance', 'Calculated absorbance', 'Nominal concentration', 'Wavelength'],
+    methods: [
+      { id: 'MTD-DYE-01', name: 'Transmittance to absorbance', expression: 'A = -log10(T / 100)', type: 'transmittance-absorbance', tab: 'lambert-beer' as const },
+      { id: 'MTD-DYE-02', name: 'Standard/sample proportion', expression: 'C sample = C standard x A sample / A standard', type: 'direct-proportion', tab: 'linear-regression' as const }
+    ]
+  }
 ];
 
 function formatNumber(value: number) {
@@ -24,6 +81,39 @@ function escapeHtml(value: string) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+const methodTypeOptions: { value: ProjectMethodType; label: string; expression: string }[] = [
+  {
+    value: 'direct-proportion',
+    label: 'Rule of three',
+    expression: 'C sample = (A sample x C standard) / A standard'
+  },
+  {
+    value: 'blank-correction',
+    label: 'Blank correction',
+    expression: 'A corrected = A sample - A blank'
+  },
+  {
+    value: 'transmittance-absorbance',
+    label: 'Transmittance to absorbance',
+    expression: 'A = -log10(T / 100)'
+  },
+  {
+    value: 'calibration-curve',
+    label: 'Calibration curve',
+    expression: 'y = mx + b; x = (y - b) / m'
+  },
+  {
+    value: 'custom-formula',
+    label: 'Custom formula',
+    expression: 'Define a custom equation'
+  }
+];
+
+function parseDecimal(value: string) {
+  const parsed = Number.parseFloat(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function openPrintableCalibrationReport(payload: {
@@ -238,6 +328,23 @@ interface MethodsProps {
 
 export default function Methods({ currentUser }: MethodsProps) {
   const [activeTab, setActiveTab] = useState<'library' | 'lambert-beer' | 'linear-regression'>('library');
+  const [projects, setProjects] = useState<AnalyticalProject[]>(initialProjectLibrary);
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectLibrary[0].id);
+  const [openedProjectId, setOpenedProjectId] = useState<string | null>(null);
+  const [selectedMethodId, setSelectedMethodId] = useState(initialProjectLibrary[0].methods[0].id);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [newProjectCompound, setNewProjectCompound] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [newMethodName, setNewMethodName] = useState('');
+  const [newMethodType, setNewMethodType] = useState<ProjectMethodType>('direct-proportion');
+  const [newMethodExpression, setNewMethodExpression] = useState('');
+  const [methodInputs, setMethodInputs] = useState({
+    sampleAbsorbance: '',
+    standardAbsorbance: '',
+    standardConcentration: '',
+    blankAbsorbance: '',
+    transmittance: ''
+  });
   
   // States para a Calculadora Lambert-Beer
   const [calcMode, setCalcMode] = useState<'concentration' | 'absorbance'>('concentration');
@@ -255,12 +362,22 @@ export default function Methods({ currentUser }: MethodsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regressionFileInputRef = useRef<HTMLInputElement>(null);
 
-  // States para Regressão Linear
+  // Linear regression states
   const [regressionPoints, setRegressionPoints] = useState<{ x: string, y: string, active: boolean }[]>([]);
   const [newX, setNewX] = useState('');
   const [newY, setNewY] = useState('');
   const [sampleY, setSampleY] = useState('');
   const [regressionSerialTarget, setRegressionSerialTarget] = useState<'point' | 'sample'>('point');
+  const filteredProjects = projects.filter((project) => {
+    const search = projectSearch.trim().toLowerCase();
+    if (!search) return true;
+
+    return [project.compound, project.matrix, project.wavelength, project.id]
+      .some((value) => value.toLowerCase().includes(search));
+  });
+  const openedProject = projects.find((project) => project.id === openedProjectId) ?? null;
+  const selectedMethod = openedProject?.methods.find((method) => method.id === selectedMethodId) ?? openedProject?.methods[0] ?? null;
+  const selectedMethodType = methodTypeOptions.find((option) => option.value === newMethodType) ?? methodTypeOptions[0];
 
   // Ref para rastrear a aba ativa dentro do loop de leitura serial (evita stale closures)
   const activeTabRef = useRef(activeTab);
@@ -282,6 +399,144 @@ export default function Methods({ currentUser }: MethodsProps) {
       setNewX('');
       setNewY('');
     }
+  };
+
+  const createProject = () => {
+    const compound = newProjectCompound.trim();
+    if (!compound) return;
+
+    const projectNumber = projects.length + 1;
+    const newProject: AnalyticalProject = {
+      id: `PRJ-${compound.slice(0, 3).toUpperCase()}-${String(projectNumber).padStart(2, '0')}`,
+      compound,
+      matrix: 'Not defined',
+      wavelength: 'Not defined',
+      status: 'Draft',
+      description: newProjectDescription.trim() || 'Project created to configure custom analytical methods.',
+      inputs: ['Absorbance', 'Transmittance', 'Known concentration'],
+      methods: [
+        {
+          id: `MTD-${compound.slice(0, 3).toUpperCase()}-${String(projectNumber).padStart(2, '0')}`,
+          name: 'Direct proportion',
+          expression: 'C sample = (A sample x C standard) / A standard',
+          type: 'direct-proportion',
+          tab: 'linear-regression'
+        }
+      ]
+    };
+
+    setProjects((currentProjects) => [newProject, ...currentProjects]);
+    setSelectedProjectId(newProject.id);
+    setProjectSearch('');
+    setNewProjectCompound('');
+    setNewProjectDescription('');
+  };
+
+  const openProjectWorkspace = (project: AnalyticalProject) => {
+    setSelectedProjectId(project.id);
+    setOpenedProjectId(project.id);
+    setSelectedMethodId(project.methods[0]?.id ?? '');
+  };
+
+  const getMethodTargetTab = (method: ProjectMethod): MethodTab | null => {
+    if (method.type === 'calibration-curve') return 'linear-regression';
+    if (method.tab === 'linear-regression' && /\b(regression|calibration|curve)\b/i.test(`${method.name} ${method.expression}`)) {
+      return 'linear-regression';
+    }
+
+    return method.tab ?? null;
+  };
+
+  const selectProjectMethod = (method: ProjectMethod) => {
+    setSelectedMethodId(method.id);
+
+    const targetTab = getMethodTargetTab(method);
+    if (targetTab === 'linear-regression' && method.type === 'calibration-curve') {
+      setActiveTab(targetTab);
+    }
+  };
+
+  const openSelectedMethodAdvanced = () => {
+    if (!selectedMethod) return;
+
+    const targetTab = getMethodTargetTab(selectedMethod);
+    if (targetTab) {
+      setActiveTab(targetTab);
+    }
+  };
+
+  const createCustomMethod = () => {
+    if (!openedProject) return;
+
+    const methodName = newMethodName.trim() || selectedMethodType.label;
+    const methodExpression = newMethodType === 'custom-formula'
+      ? newMethodExpression.trim() || 'Custom equation'
+      : selectedMethodType.expression;
+    const methodNumber = openedProject.methods.length + 1;
+    const methodId = `MTD-${openedProject.id.replace('PRJ-', '')}-${String(methodNumber).padStart(2, '0')}`;
+    const newMethod: ProjectMethod = {
+      id: methodId,
+      name: methodName,
+      expression: methodExpression,
+      type: newMethodType,
+      tab: newMethodType === 'blank-correction' || newMethodType === 'transmittance-absorbance' ? 'lambert-beer' : 'linear-regression'
+    };
+
+    setProjects((currentProjects) => currentProjects.map((project) => (
+      project.id === openedProject.id
+        ? { ...project, methods: [...project.methods, newMethod] }
+        : project
+    )));
+    setSelectedMethodId(methodId);
+    setNewMethodName('');
+    setNewMethodExpression('');
+    setNewMethodType('direct-proportion');
+
+    if (newMethod.type === 'calibration-curve') {
+      setActiveTab('linear-regression');
+    }
+  };
+
+  const updateMethodInput = (field: keyof typeof methodInputs, value: string) => {
+    setMethodInputs((currentInputs) => ({ ...currentInputs, [field]: value }));
+  };
+
+  const calculateProjectMethod = (method: ProjectMethod | null) => {
+    if (!method) return null;
+
+    const sampleAbsorbance = parseDecimal(methodInputs.sampleAbsorbance);
+    const standardAbsorbance = parseDecimal(methodInputs.standardAbsorbance);
+    const standardConcentration = parseDecimal(methodInputs.standardConcentration);
+    const blankAbsorbance = parseDecimal(methodInputs.blankAbsorbance);
+    const transmittance = parseDecimal(methodInputs.transmittance);
+
+    if (method.type === 'direct-proportion') {
+      if (standardAbsorbance === 0) return null;
+      return {
+        label: 'Calculated sample concentration',
+        value: (sampleAbsorbance * standardConcentration) / standardAbsorbance,
+        unit: 'concentration units'
+      };
+    }
+
+    if (method.type === 'blank-correction') {
+      return {
+        label: 'Corrected absorbance',
+        value: sampleAbsorbance - blankAbsorbance,
+        unit: 'AU'
+      };
+    }
+
+    if (method.type === 'transmittance-absorbance') {
+      if (transmittance <= 0) return null;
+      return {
+        label: 'Calculated absorbance',
+        value: -Math.log10(transmittance / 100),
+        unit: 'AU'
+      };
+    }
+
+    return null;
   };
 
   const removePoint = (index: number) => {
@@ -326,7 +581,7 @@ export default function Methods({ currentUser }: MethodsProps) {
     return { slope, intercept, r2, points: validPoints };
   };
 
-  // Sincroniza a absorbância da amostra com base no comprimento de onda selecionado na varredura
+  // Synchronizes sample absorbance based on the selected wavelength from the scan.
   useEffect(() => {
     const targetNum = Number.parseFloat(targetWavelength.replace(',', '.'));
     if (isNaN(targetNum)) return;
@@ -346,7 +601,7 @@ export default function Methods({ currentUser }: MethodsProps) {
       }
     }
 
-    // Tolerância de 1nm para cobrir arredondamentos de diferentes equipamentos
+    // 1 nm tolerance to cover rounding differences across equipment.
     if (minDiff <= 1.0) {
       setAbsSample(closestAbs.replace(',', '.'));
     }
@@ -366,7 +621,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
   const finalResult = calcMode === 'concentration' ? resultConcentration : resultAbsorbance;
 
-  // Gera o relatório imprimível sem salvar snapshot no banco.
+  // Generates the printable report without saving a database snapshot.
   const printLambertReport = () => {
     const payload = buildReportPayload(
       currentUser,
@@ -410,7 +665,7 @@ export default function Methods({ currentUser }: MethodsProps) {
     });
   };
 
-  // Função para limpar todos os campos
+  // Clears all calculator fields.
   const resetCalculator = () => {
     setAbsSample('0');
     setAbsBlank('0');
@@ -423,17 +678,17 @@ export default function Methods({ currentUser }: MethodsProps) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Função para processar texto de varredura (Wavelength Absorbance)
+  // Processes scan text data (Wavelength Absorbance).
   const processDataStream = (text: string, clearFirst = false) => {
     const lines = text.split(/\r?\n/);
     const newScanMap: Record<string, string> = {};
     let foundCount = 0;
     
     lines.forEach(line => {
-      // Remove aspas e espaços extras
+      // Removes quotes and extra spaces.
       const cleanLine = line.replace(/"/g, '').trim();
-      // Regex robusta: captura dois números separados por espaço, tab, vírgula, ponto-e-vírgula ou pipe (|)
-      // Agora aceita o formato "Wavelength | Absorbance" do seu equipamento
+      // Captures two numbers separated by space, tab, comma, semicolon or pipe.
+      // Accepts the "Wavelength | Absorbance" format from the equipment.
       const matches = cleanLine.match(/(\d{3,4}(?:[.,]\d+)?)[,\s\t;|]+([-+]?\d+[.,]?\d*)/);
       
       if (matches && matches.length >= 3) {
@@ -442,7 +697,7 @@ export default function Methods({ currentUser }: MethodsProps) {
         
         const wlNum = parseFloat(wavelength);
         const absNum = parseFloat(absorbance);
-        // Filtra comprimentos de onda válidos e evita capturar ranges do cabeçalho (absorbância raramente > 4.0)
+        // Filters valid wavelengths and avoids capturing header ranges.
         if (wlNum >= 190 && wlNum <= 1100 && absNum < 10) {
           newScanMap[wavelength] = absorbance;
           foundCount++;
@@ -527,7 +782,7 @@ export default function Methods({ currentUser }: MethodsProps) {
       const { count, map } = processDataStream(text, true); 
       
       if (count > 0) {
-        // Auto-detecta o Pico (λ-max) para facilitar a vida do usuário
+        // Auto-detects the peak lambda max to simplify setup.
         const entries = Object.entries(map);
         const peak = entries.reduce((prev, curr) => 
           parseFloat(curr[1]) > parseFloat(prev[1]) ? curr : prev
@@ -536,8 +791,8 @@ export default function Methods({ currentUser }: MethodsProps) {
         setTargetWavelength(peak[0]);
         setAbsSample(peak[1]);
       } else {
-        // Fallback: Tenta extrair um valor decimal isolado que pareça absorbância (entre 0.0 e 3.0)
-        // Melhorado para evitar IDs grandes (ex: 2000)
+        // Fallback: extracts an isolated decimal value that looks like absorbance.
+        // Improved to avoid large IDs, for example 2000.
         const numericMatch = text.match(/(?<!\d)[0-2][.,]\d{2,6}(?!\d)/);
         if (numericMatch) setAbsSample(numericMatch[0].replace(',', '.'));
       }
@@ -556,7 +811,7 @@ export default function Methods({ currentUser }: MethodsProps) {
       
       lines.forEach(line => {
         const cleanLine = line.replace(/"/g, '').trim();
-        // Regex para capturar dois números (decimais ou inteiros) separados por delimitadores comuns
+        // Captures two numbers separated by common delimiters.
         const matches = cleanLine.match(/([-+]?\d+[.,]?\d*)[,\s\t;|]+([-+]?\d+[.,]?\d*)/);
         
         if (matches && matches.length >= 3) {
@@ -573,7 +828,7 @@ export default function Methods({ currentUser }: MethodsProps) {
       }
     };
     reader.readAsText(file);
-    if (e.target) e.target.value = ''; // Reseta o input para permitir re-upload do mesmo arquivo
+    if (e.target) e.target.value = ''; // Resets the input to allow re-uploading the same file.
   };
 
   return (
@@ -583,20 +838,20 @@ export default function Methods({ currentUser }: MethodsProps) {
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em] font-bold">Standard Operating Procedures</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Computational Protocols</h1>
-          <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Version-controlled analytical methods, computational chemistry workflows and validated lab protocols.</p>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Analytical Projects</h1>
+          <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Choose a compound project, add calculation methods, and automate results from equipment readings like absorbance, transmittance and wavelength.</p>
         </div>
         <div className="flex w-full md:w-auto flex-col sm:flex-row gap-4">
           <button className="px-6 py-4 bg-white/5 border border-white/5 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl">
             Import .MTD
           </button>
           <button className="px-8 py-4 bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.3)] transition-all transform hover:scale-105 active:scale-95 rounded-xl">
-            New Protocol
+            New Project
           </button>
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <button
           onClick={() => setActiveTab('library')}
           className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
@@ -605,7 +860,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               : 'bg-white/[0.03] text-white/70 border-white/10 hover:bg-white/[0.08]'
           }`}
         >
-          Protocol Library
+          Project Library
         </button>
         <button
           onClick={() => setActiveTab('lambert-beer')}
@@ -630,56 +885,370 @@ export default function Methods({ currentUser }: MethodsProps) {
       </div>
 
       {activeTab === 'library' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {methods.map((method) => (
-            <div key={method.id} className="glass-panel p-5 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 group hover:bg-white/[0.02] transition-all relative overflow-hidden border-white/[0.03] rounded-2xl">
-              <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-8 min-w-0">
-                <div className="relative">
-                  <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 text-white/20 group-hover:text-primary group-hover:bg-primary/5 transition-all group-hover:scale-110">
-                    <FileCode size={36} />
+        openedProject ? (
+          <div className="space-y-5">
+            <section className="space-y-5">
+              <div className="glass-panel rounded-2xl p-5 border-white/[0.03]">
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <button
+                      onClick={() => setOpenedProjectId(null)}
+                      className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-white/45 hover:text-white hover:bg-white/[0.08] transition-all"
+                      title="Back to project list"
+                    >
+                      <ArrowLeft size={18} />
+                    </button>
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Project Workspace</p>
+                      <h2 className="text-2xl font-display font-bold text-white mt-2">{openedProject.compound}</h2>
+                      <p className="text-sm text-white/45 mt-2 max-w-2xl leading-relaxed">{openedProject.description}</p>
+                    </div>
                   </div>
-                  <div className="absolute -top-1 -right-1">
-                    {method.status === 'Approved' && (
-                      <div className="p-1.5 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-                        <Shield size={12} className="text-white" />
-                      </div>
+                  <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[9px] font-mono uppercase tracking-widest">
+                    {openedProject.methods.length} methods
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+                <div className="glass-panel rounded-2xl p-5 border-white/[0.03] space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-white font-display font-bold">Project Methods</h3>
+                    <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">Select one</span>
+                  </div>
+
+                  <div className="space-y-2 max-h-[380px] overflow-y-auto custom-scrollbar pr-1">
+                    {openedProject.methods.map((method) => {
+                      const isActive = selectedMethod?.id === method.id;
+                      const methodType = methodTypeOptions.find((option) => option.value === method.type);
+
+                      return (
+                        <button
+                          key={method.id}
+                          onClick={() => selectProjectMethod(method)}
+                          className={`w-full text-left rounded-xl border p-4 transition-all ${
+                            isActive
+                              ? 'bg-primary/10 border-primary/25'
+                              : 'bg-white/[0.03] border-white/8 hover:bg-white/[0.06] hover:border-white/12'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-white font-semibold break-words">{method.name}</p>
+                              <p className="text-[10px] font-mono text-primary/80 mt-2 break-words">{method.expression}</p>
+                            </div>
+                            <Calculator size={16} className={isActive ? 'text-primary shrink-0' : 'text-white/25 shrink-0'} />
+                          </div>
+                          <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-3">
+                            {methodType?.label ?? 'Custom method'}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="glass-panel rounded-2xl p-5 border-primary/10 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Method Runner</p>
+                      <h3 className="text-xl font-display font-bold text-white mt-2">{selectedMethod?.name ?? 'No method selected'}</h3>
+                      <p className="text-sm text-white/45 mt-2 break-words">{selectedMethod?.expression ?? 'Create or select a method to start.'}</p>
+                    </div>
+                    {selectedMethod?.tab && (
+                      <button
+                        onClick={openSelectedMethodAdvanced}
+                        className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-on-primary text-[10px] font-mono uppercase tracking-widest transition-all"
+                      >
+                        {getMethodTargetTab(selectedMethod) === 'linear-regression' ? 'Open Linear Regression' : 'Advanced'}
+                      </button>
                     )}
                   </div>
-                </div>
-                <div className="space-y-2 min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <h3 className="text-xl font-display font-bold text-white leading-none group-hover:text-primary transition-colors">{method.name}</h3>
-                    <span className="text-[9px] font-mono text-primary bg-primary/10 border border-primary/20 py-0.5 px-2 rounded-full uppercase tracking-tighter font-bold">VER_{method.version}</span>
-                  </div>
-                  <p className="text-xs text-white/40 font-medium">Principal Architect: <span className="text-white/60 italic">{method.author}</span></p>
-                  <div className="flex items-center gap-4 mt-3">
-                    <span className={`text-[9px] font-mono font-bold uppercase tracking-widest ${
-                      method.status === 'Approved' ? 'text-green-400' :
-                      method.status === 'Draft' ? 'text-yellow-400' :
-                      'text-primary'
-                    }`}>
-                      {method.status}
-                    </span>
-                    <div className="w-1 h-1 rounded-full bg-white/10" />
-                    <span className="text-[9px] font-mono text-white/20 uppercase tracking-widest">ACCESS: {method.lastAccess}</span>
-                  </div>
+
+                  {selectedMethod && getMethodTargetTab(selectedMethod) === 'linear-regression' && selectedMethod.type === 'calibration-curve' ? (
+                    <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-6 text-sm text-white/55 leading-relaxed">
+                      This method uses the linear regression calculator. Open it to add calibration points, calculate the equation and quantify the sample from absorbance.
+                    </div>
+                  ) : selectedMethod?.type === 'custom-formula' ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-sm text-white/45 leading-relaxed">
+                      Custom formula execution will use the formula builder in the next iteration. For now this method is stored in the project and can be opened in the advanced calculator when applicable.
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {(selectedMethod?.type === 'direct-proportion' || selectedMethod?.type === 'blank-correction') && (
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Sample absorbance</span>
+                            <input
+                              type="number"
+                              step="any"
+                              value={methodInputs.sampleAbsorbance}
+                              onChange={(event) => updateMethodInput('sampleAbsorbance', event.target.value)}
+                              className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                              placeholder="0.000"
+                            />
+                          </label>
+                        )}
+
+                        {selectedMethod?.type === 'direct-proportion' && (
+                          <>
+                            <label className="block space-y-2">
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Standard absorbance</span>
+                              <input
+                                type="number"
+                                step="any"
+                                value={methodInputs.standardAbsorbance}
+                                onChange={(event) => updateMethodInput('standardAbsorbance', event.target.value)}
+                                className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                                placeholder="0.000"
+                              />
+                            </label>
+                            <label className="block space-y-2">
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Standard concentration</span>
+                              <input
+                                type="number"
+                                step="any"
+                                value={methodInputs.standardConcentration}
+                                onChange={(event) => updateMethodInput('standardConcentration', event.target.value)}
+                                className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                                placeholder="0.000"
+                              />
+                            </label>
+                          </>
+                        )}
+
+                        {selectedMethod?.type === 'blank-correction' && (
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Blank absorbance</span>
+                            <input
+                              type="number"
+                              step="any"
+                              value={methodInputs.blankAbsorbance}
+                              onChange={(event) => updateMethodInput('blankAbsorbance', event.target.value)}
+                              className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                              placeholder="0.000"
+                            />
+                          </label>
+                        )}
+
+                        {selectedMethod?.type === 'transmittance-absorbance' && (
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Transmittance (%)</span>
+                            <input
+                              type="number"
+                              step="any"
+                              value={methodInputs.transmittance}
+                              onChange={(event) => updateMethodInput('transmittance', event.target.value)}
+                              className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                              placeholder="100"
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {(() => {
+                        const result = calculateProjectMethod(selectedMethod);
+
+                        return (
+                          <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-5">
+                            <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">
+                              {result?.label ?? 'Result'}
+                            </p>
+                            <p className="text-3xl font-display font-bold text-white mt-3">
+                              {result ? formatNumber(result.value) : '---'}
+                              <span className="text-sm font-mono text-white/40 ml-2">{result?.unit ?? ''}</span>
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="flex gap-3 opacity-100 lg:opacity-0 transition-all lg:translate-x-4 lg:group-hover:translate-x-0 lg:group-hover:opacity-100 self-start lg:self-auto">
-                <button title="Execute Method" className="p-3 bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-on-primary rounded-xl transition-all shadow-lg hover:shadow-primary/20">
-                  <Play size={20} fill="currentColor" />
-                </button>
-                <button title="Edit Protocol" className="p-3 bg-white/[0.03] border border-white/5 text-white/40 hover:text-white hover:bg-white/[0.08] rounded-xl transition-all">
-                  <Edit2 size={18} />
-                </button>
-                <button title="Clone Version" className="p-3 bg-white/[0.03] border border-white/5 text-white/40 hover:text-white hover:bg-white/[0.08] rounded-xl transition-all">
-                  <Copy size={18} />
-                </button>
+            </section>
+
+            <section className="glass-panel rounded-2xl p-5 space-y-5 border-primary/10">
+              <div className="max-w-3xl">
+                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Create Method</p>
+                <h2 className="text-xl font-display font-bold text-white mt-2">Custom Calculation</h2>
+                <p className="text-sm text-white/45 mt-2 leading-relaxed">
+                  Add a method to this project. Start with rule of three, blank correction, transmittance conversion, or store a custom formula.
+                </p>
               </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <label className="block space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Method name</span>
+                  <input
+                    value={newMethodName}
+                    onChange={(event) => setNewMethodName(event.target.value)}
+                    className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                    placeholder="Ex: Sample quantification"
+                  />
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Calculation type</span>
+                  <select
+                    value={newMethodType}
+                    onChange={(event) => setNewMethodType(event.target.value as ProjectMethodType)}
+                    className="w-full rounded-xl bg-[#08101f] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                  >
+                    {methodTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block space-y-2 lg:col-span-1">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Formula</span>
+                  <textarea
+                    value={newMethodType === 'custom-formula' ? newMethodExpression : selectedMethodType.expression}
+                    onChange={(event) => setNewMethodExpression(event.target.value)}
+                    disabled={newMethodType !== 'custom-formula'}
+                    rows={3}
+                    className="w-full resize-none rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25 disabled:text-white/45 disabled:cursor-not-allowed"
+                    placeholder="Describe the formula..."
+                  />
+                </label>
+              </div>
+
+              <button
+                onClick={createCustomMethod}
+                className="w-full lg:w-auto px-8 py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all flex items-center justify-center gap-2"
+              >
+                <Plus size={16} />
+                Add Method
+              </button>
+            </section>
+          </div>
+        ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+          <section className="glass-panel rounded-2xl border-white/[0.03] overflow-hidden">
+            <div className="p-5 border-b border-white/[0.06] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Project Library</p>
+                <h2 className="text-xl font-display font-bold text-white mt-2">Compound Projects</h2>
+              </div>
+              <label className="relative w-full lg:w-[340px]">
+                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+                <input
+                  value={projectSearch}
+                  onChange={(event) => setProjectSearch(event.target.value)}
+                  className="w-full rounded-xl bg-white/[0.04] border border-white/10 pl-11 pr-4 py-3 text-sm text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                  placeholder="Search compound, matrix or ID"
+                />
+              </label>
             </div>
-          ))}
+
+            <div className="max-h-[460px] overflow-y-auto custom-scrollbar divide-y divide-white/[0.04]">
+              {filteredProjects.length === 0 && (
+                <div className="p-8 text-center text-sm text-white/35">
+                  No projects found for this search.
+                </div>
+              )}
+
+              {filteredProjects.map((project) => {
+                const isSelected = selectedProjectId === project.id;
+
+                return (
+                  <div
+                    key={project.id}
+                    className={`p-4 sm:p-5 transition-all hover:bg-white/[0.025] ${
+                      isSelected ? 'bg-primary/[0.04]' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <button
+                        onClick={() => openProjectWorkspace(project)}
+                        className="min-w-0 flex items-start gap-4 text-left w-full"
+                      >
+                        <div className={`mt-0.5 p-3 rounded-xl border shrink-0 ${
+                          isSelected
+                            ? 'bg-primary/10 border-primary/20 text-primary'
+                            : 'bg-white/[0.03] border-white/5 text-white/25'
+                        }`}>
+                          <FlaskConical size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-white font-semibold leading-tight">{project.compound}</h3>
+                            <span className="text-[8px] font-mono text-primary bg-primary/10 border border-primary/20 py-0.5 px-2 rounded-full uppercase tracking-widest">{project.id}</span>
+                            <span className={`text-[8px] font-mono uppercase tracking-widest ${
+                              project.status === 'Ready' ? 'text-green-300' : project.status === 'Draft' ? 'text-yellow-300' : 'text-primary'
+                            }`}>
+                              {project.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-white/35 mt-2 line-clamp-2">{project.description}</p>
+                          <div className="flex flex-wrap items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-white/25">
+                            <span>{project.matrix}</span>
+                            <span className="w-1 h-1 rounded-full bg-white/10" />
+                            <span className="text-secondary/70">{project.wavelength}</span>
+                            <span className="w-1 h-1 rounded-full bg-white/10" />
+                            <span>{project.inputs.length} inputs</span>
+                            <span>{project.methods.length} methods</span>
+                          </div>
+                        </div>
+                      </button>
+
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="glass-panel rounded-2xl p-5 space-y-5 border-primary/10">
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Create Project</p>
+              <h2 className="text-xl font-display font-bold text-white mt-2">New Compound</h2>
+              <p className="text-sm text-white/45 mt-2 leading-relaxed">
+                Register the compound first. Calculation methods can then be configured with readings from the equipment.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Compound name</span>
+                <input
+                  value={newProjectCompound}
+                  onChange={(event) => setNewProjectCompound(event.target.value)}
+                  className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                  placeholder="Ex: Paracetamol"
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Purpose</span>
+                <textarea
+                  value={newProjectDescription}
+                  onChange={(event) => setNewProjectDescription(event.target.value)}
+                  rows={3}
+                  className="w-full resize-none rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                  placeholder="Describe what this project should calculate..."
+                />
+              </label>
+            </div>
+
+            <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-4">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Default method</p>
+              <p className="text-xs text-white/55 mt-2 leading-relaxed">
+                New projects start with a rule-of-three template: C sample = A sample x C standard / A standard.
+              </p>
+            </div>
+
+            <button
+              onClick={createProject}
+              disabled={!newProjectCompound.trim()}
+              className="w-full py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Plus size={16} />
+              Create Project
+            </button>
+          </section>
         </div>
+        )
       ) : activeTab === 'lambert-beer' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           <section className="glass-panel rounded-[2rem] p-6 sm:p-8 space-y-6">
@@ -809,7 +1378,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 </label>
               )}
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Molar Coeff. (ε)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Molar Coeff. (epsilon)</span>
                 <input type="number" step="any" value={epsilon} onChange={(e) => setEpsilon(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
               <label className="block space-y-2">
@@ -847,15 +1416,15 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
                   <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Applied Formula</p>
                   <p className="text-sm text-white/80 leading-relaxed italic">
-                    {calcMode === 'concentration' ? 'c = (A / (ε · l)) · DF' : 'A = ε · l · (c / DF)'}
+                    {calcMode === 'concentration' ? 'c = (A / (epsilon x l)) x DF' : 'A = epsilon x l x (c / DF)'}
                   </p>
                   {calcMode === 'concentration' ? (
                   <p className="text-xs text-white/40 mt-1">
-                    c = ({effectiveAbs.toFixed(4)} / ({epsVal} · {pathVal})) · {dilVal}
+                    c = ({effectiveAbs.toFixed(4)} / ({epsVal} x {pathVal})) x {dilVal}
                   </p>
                   ) : (
                   <p className="text-xs text-white/40 mt-1">
-                    A = {epsVal} · {pathVal} · ({inputConcVal} / {dilVal})
+                    A = {epsVal} x {pathVal} x ({inputConcVal} / {dilVal})
                   </p>
                   )}
                 </div>
@@ -892,7 +1461,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Applied Formula</p>
                   <p className="text-white mt-2 font-semibold break-words">
-                    {calcMode === 'concentration' ? 'c = (A / (ε · l)) · DF' : 'A = ε · l · (c / DF)'}
+                    {calcMode === 'concentration' ? 'c = (A / (epsilon x l)) x DF' : 'A = epsilon x l x (c / DF)'}
                   </p>
                   <p className="text-xs text-white/45 mt-2">Target: {calcMode === 'concentration' ? 'Concentration' : 'Absorbance'}</p>
                 </div>
@@ -901,8 +1470,8 @@ export default function Methods({ currentUser }: MethodsProps) {
                   <p className="text-white mt-2 font-semibold">{targetWavelength || 'N/A'} nm</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Molar Coeff. (ε)</p>
-                  <p className="text-white mt-2 font-semibold">{formatNumber(epsVal)} M⁻¹cm⁻¹</p>
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Molar Coeff. (epsilon)</p>
+                  <p className="text-white mt-2 font-semibold">{formatNumber(epsVal)} M^-1cm^-1</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Path Length (l)</p>
@@ -1017,11 +1586,11 @@ export default function Methods({ currentUser }: MethodsProps) {
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Concentração (X - mol/L)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Concentration (X - mol/L)</span>
                 <input type="number" step="any" value={newX} onChange={(e) => setNewX(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
               </label>
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Absorbância (Y - AU)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Absorbance (Y - AU)</span>
                 <div className="flex gap-2">
                   <input type="number" step="any" value={newY} onChange={(e) => setNewY(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
                   <button onClick={addPoint} className="p-3 bg-primary text-on-primary rounded-xl hover:scale-105 transition-all"><Plus size={20} /></button>
@@ -1041,7 +1610,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                     <button 
                       onClick={() => togglePointActive(idx)}
                       className={`transition-colors ${point.active ? 'text-primary' : 'text-white/20'}`}
-                      title={point.active ? "Desativar ponto" : "Ativar ponto"}
+                      title={point.active ? "Deactivate point" : "Activate point"}
                     >
                       {point.active ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                     </button>
