@@ -43,6 +43,7 @@ function normalizeAuthUser(value: unknown): AuthUser | null {
 
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
+  const [viewResetKey, setViewResetKey] = useState(0);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
@@ -114,6 +115,16 @@ export default function App() {
     }
   };
 
+  const handleViewChange = (view: View) => {
+    setActiveView((currentView) => {
+      if (currentView === view) {
+        setViewResetKey((currentKey) => currentKey + 1);
+      }
+
+      return view;
+    });
+  };
+
   const renderView = (user: AuthUser) => {
     switch (activeView) {
       case 'dashboard': return <Dashboard currentUser={user} onOpenView={setActiveView} />;
@@ -148,7 +159,8 @@ export default function App() {
   return (
     <Layout
       activeView={activeView}
-      onViewChange={setActiveView}
+      contentKey={`${activeView}:${viewResetKey}`}
+      onViewChange={handleViewChange}
       onLogout={handleLogout}
       user={{
         name: currentUser.fullName,

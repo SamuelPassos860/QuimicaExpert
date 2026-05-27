@@ -31,6 +31,8 @@ interface AnalyticalProject {
   methods: ProjectMethod[];
 }
 
+const METHODS_STORAGE_VERSION = 1;
+
 const initialProjectLibrary: AnalyticalProject[] = [
   {
     id: 'PRJ-CAF',
@@ -72,6 +74,148 @@ const initialProjectLibrary: AnalyticalProject[] = [
     ]
   }
 ];
+
+const projectMethodTypes: ProjectMethodType[] = [
+  'direct-proportion',
+  'blank-correction',
+  'transmittance-absorbance',
+  'calibration-curve',
+  'custom-formula'
+];
+
+const methodTabs: MethodTab[] = ['lambert-beer', 'linear-regression'];
+const projectStatuses: AnalyticalProject['status'][] = ['Ready', 'Draft', 'Template'];
+
+function cloneInitialProjects() {
+  return initialProjectLibrary.map((project) => ({
+    ...project,
+    inputs: [...project.inputs],
+    methods: project.methods.map((method) => ({
+      ...method,
+      constants: method.constants ? [...method.constants] : undefined
+    }))
+  }));
+}
+
+function getMethodsStorageKey(currentUser: AuthUser) {
+  return `quimicaexpert:methods:v${METHODS_STORAGE_VERSION}:${currentUser.id}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizeFormulaConstants(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+
+  const constants = value
+    .filter(isRecord)
+    .map((constant) => ({
+      name: typeof constant.name === 'string' ? constant.name : '',
+      value: typeof constant.value === 'number' && Number.isFinite(constant.value) ? constant.value : Number.NaN
+    }))
+    .filter((constant) => constant.name && Number.isFinite(constant.value));
+
+  return constants.length ? constants : undefined;
+}
+
+function normalizeSavedMethod(value: unknown): ProjectMethod | null {
+  if (!isRecord(value)) return null;
+
+  const type = value.type;
+  const tab = value.tab;
+
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.expression !== 'string' ||
+    !projectMethodTypes.includes(type as ProjectMethodType)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    expression: value.expression,
+    type: type as ProjectMethodType,
+    tab: methodTabs.includes(tab as MethodTab) ? tab as MethodTab : undefined,
+    constants: normalizeFormulaConstants(value.constants)
+  };
+}
+
+function normalizeSavedProject(value: unknown): AnalyticalProject | null {
+  if (!isRecord(value)) return null;
+
+  const status = value.status;
+
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.compound !== 'string' ||
+    typeof value.matrix !== 'string' ||
+    typeof value.wavelength !== 'string' ||
+    typeof value.description !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    compound: value.compound,
+    matrix: value.matrix,
+    wavelength: value.wavelength,
+    status: projectStatuses.includes(status as AnalyticalProject['status']) ? status as AnalyticalProject['status'] : 'Draft',
+    description: value.description,
+    inputs: normalizeStringArray(value.inputs),
+    methods: Array.isArray(value.methods)
+      ? value.methods.map(normalizeSavedMethod).filter((method): method is ProjectMethod => method !== null)
+      : []
+  };
+}
+
+function loadStoredProjects(currentUser: AuthUser) {
+  if (typeof window === 'undefined') return cloneInitialProjects();
+
+  try {
+    const storedValue = window.localStorage.getItem(getMethodsStorageKey(currentUser));
+    if (!storedValue) return cloneInitialProjects();
+
+    const parsedValue = JSON.parse(storedValue) as unknown;
+    const storedProjects = isRecord(parsedValue) ? parsedValue.projects : parsedValue;
+
+    if (!Array.isArray(storedProjects)) return cloneInitialProjects();
+
+    const normalizedProjects = storedProjects
+      .map(normalizeSavedProject)
+      .filter((project): project is AnalyticalProject => project !== null);
+
+    return normalizedProjects.length ? normalizedProjects : cloneInitialProjects();
+  } catch (error) {
+    console.warn('Failed to load saved methods:', error);
+    return cloneInitialProjects();
+  }
+}
+
+function storeProjects(currentUser: AuthUser, projects: AnalyticalProject[]) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      getMethodsStorageKey(currentUser),
+      JSON.stringify({
+        version: METHODS_STORAGE_VERSION,
+        savedAt: new Date().toISOString(),
+        projects
+      })
+    );
+  } catch (error) {
+    console.warn('Failed to save methods:', error);
+  }
+}
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -684,11 +828,21 @@ interface MethodsProps {
 }
 
 export default function Methods({ currentUser }: MethodsProps) {
+  const initialStoredProjectsRef = useRef<AnalyticalProject[] | null>(null);
+  const getInitialProjects = () => {
+    if (!initialStoredProjectsRef.current) {
+      initialStoredProjectsRef.current = loadStoredProjects(currentUser);
+    }
+
+    return initialStoredProjectsRef.current;
+  };
+
   const [activeTab, setActiveTab] = useState<'library' | 'lambert-beer' | 'linear-regression'>('library');
-  const [projects, setProjects] = useState<AnalyticalProject[]>(initialProjectLibrary);
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectLibrary[0].id);
+  const [projects, setProjects] = useState<AnalyticalProject[]>(getInitialProjects);
+  const [selectedProjectId, setSelectedProjectId] = useState(() => getInitialProjects()[0]?.id ?? initialProjectLibrary[0].id);
   const [openedProjectId, setOpenedProjectId] = useState<string | null>(null);
-  const [selectedMethodId, setSelectedMethodId] = useState(initialProjectLibrary[0].methods[0].id);
+  const [selectedMethodId, setSelectedMethodId] = useState(() => getInitialProjects()[0]?.methods[0]?.id ?? initialProjectLibrary[0].methods[0].id);
+  const [methodReturnTarget, setMethodReturnTarget] = useState<{ projectId: string; methodId: string } | null>(null);
   const [projectMode, setProjectMode] = useState<'workspace' | 'method-builder'>('workspace');
   const [projectSearch, setProjectSearch] = useState('');
   const [newProjectCompound, setNewProjectCompound] = useState('');
@@ -727,6 +881,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
   const [lambertSerialTarget, setLambertSerialTarget] = useState<'sample' | 'blank'>('sample');
   const [isSerialConnected, setIsSerialConnected] = useState(false);
+  const pageRootRef = useRef<HTMLDivElement>(null);
   const portRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regressionFileInputRef = useRef<HTMLInputElement>(null);
@@ -746,6 +901,10 @@ export default function Methods({ currentUser }: MethodsProps) {
   });
   const openedProject = projects.find((project) => project.id === openedProjectId) ?? null;
   const selectedMethod = openedProject?.methods.find((method) => method.id === selectedMethodId) ?? openedProject?.methods[0] ?? null;
+  const returnTargetProject = methodReturnTarget
+    ? projects.find((project) => project.id === methodReturnTarget.projectId) ?? null
+    : null;
+  const returnTargetMethod = returnTargetProject?.methods.find((method) => method.id === methodReturnTarget?.methodId) ?? null;
   const selectedMethodType = methodTypeOptions.find((option) => option.value === newMethodType) ?? methodTypeOptions[0];
   const customFormulaResult = selectedMethod?.type === 'custom-formula'
     ? evaluateCustomFormula(selectedMethod.expression, customFormulaInputs, selectedMethod.constants)
@@ -764,6 +923,31 @@ export default function Methods({ currentUser }: MethodsProps) {
   useEffect(() => {
     regressionSerialTargetRef.current = regressionSerialTarget;
   }, [regressionSerialTarget]);
+  useEffect(() => {
+    storeProjects(currentUser, projects);
+  }, [currentUser, projects]);
+  useEffect(() => {
+    if (projects.length === 0) return;
+
+    if (!projects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId(projects[0].id);
+    }
+
+    if (openedProjectId && !projects.some((project) => project.id === openedProjectId)) {
+      setOpenedProjectId(null);
+      setProjectMode('workspace');
+    }
+
+    if (
+      methodReturnTarget &&
+      !projects.some((project) => (
+        project.id === methodReturnTarget.projectId &&
+        project.methods.some((method) => method.id === methodReturnTarget.methodId)
+      ))
+    ) {
+      setMethodReturnTarget(null);
+    }
+  }, [methodReturnTarget, openedProjectId, projects, selectedProjectId]);
 
   const addPoint = () => {
     if (newX.trim() && newY.trim()) {
@@ -811,14 +995,24 @@ export default function Methods({ currentUser }: MethodsProps) {
     setProjectMode('workspace');
   };
 
+  const scrollToMethodsStart = () => {
+    window.requestAnimationFrame(() => {
+      pageRootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const openLibraryRoot = () => {
     setActiveTab('library');
+    setMethodReturnTarget(null);
     setOpenedProjectId(null);
     setProjectMode('workspace');
+    scrollToMethodsStart();
   };
 
   const openCalculatorTab = (tab: 'lambert-beer' | 'linear-regression') => {
+    setMethodReturnTarget(null);
     setActiveTab(tab);
+    scrollToMethodsStart();
   };
 
   const openMethodBuilder = () => {
@@ -844,7 +1038,11 @@ export default function Methods({ currentUser }: MethodsProps) {
 
     const targetTab = getMethodTargetTab(method);
     if (targetTab === 'linear-regression' && method.type === 'calibration-curve') {
+      if (openedProject) {
+        setMethodReturnTarget({ projectId: openedProject.id, methodId: method.id });
+      }
       setActiveTab(targetTab);
+      scrollToMethodsStart();
     }
   };
 
@@ -853,8 +1051,23 @@ export default function Methods({ currentUser }: MethodsProps) {
 
     const targetTab = getMethodTargetTab(selectedMethod);
     if (targetTab) {
+      if (openedProject && targetTab === 'linear-regression') {
+        setMethodReturnTarget({ projectId: openedProject.id, methodId: selectedMethod.id });
+      }
       setActiveTab(targetTab);
+      scrollToMethodsStart();
     }
+  };
+
+  const returnToProjectMethod = () => {
+    if (!returnTargetProject || !returnTargetMethod) return;
+
+    setSelectedProjectId(returnTargetProject.id);
+    setOpenedProjectId(returnTargetProject.id);
+    setSelectedMethodId(returnTargetMethod.id);
+    setProjectMode('workspace');
+    setActiveTab('library');
+    scrollToMethodsStart();
   };
 
   const deleteProjectMethod = (projectId: string, methodId: string) => {
@@ -948,7 +1161,9 @@ export default function Methods({ currentUser }: MethodsProps) {
     setFormulaBuilderConstants([]);
 
     if (newMethod.type === 'calibration-curve') {
+      setMethodReturnTarget({ projectId: openedProject.id, methodId });
       setActiveTab('linear-regression');
+      scrollToMethodsStart();
     } else {
       setProjectMode('workspace');
     }
@@ -1357,7 +1572,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   };
 
   return (
-    <div className="space-y-8 sm:space-y-10">
+    <div ref={pageRootRef} className="space-y-8 sm:space-y-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -2244,6 +2459,27 @@ export default function Methods({ currentUser }: MethodsProps) {
           </section>
         </div>
       ) : (
+        <>
+        {returnTargetMethod && (
+          <section className="glass-panel rounded-2xl p-5 border-white/[0.03] mb-5">
+            <div className="flex items-start gap-4">
+              <button
+                onClick={returnToProjectMethod}
+                className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-white/45 hover:text-white hover:bg-white/[0.08] transition-all"
+                title="Back to method"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Linear Regression Calculator</p>
+                <h2 className="text-2xl font-display font-bold text-white mt-2">{returnTargetMethod.name}</h2>
+                <p className="text-sm text-white/45 mt-2 max-w-2xl leading-relaxed">
+                  Return to the project method after building the calibration curve.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-8 items-start">
           <section className="glass-panel rounded-[2rem] p-6 sm:p-8 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2254,7 +2490,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <h2 className="text-xl font-display font-bold text-white">Data Calibration Curve</h2>
               </div>
               
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <input 
                   type="file" 
                   ref={regressionFileInputRef} 
@@ -2525,6 +2761,7 @@ export default function Methods({ currentUser }: MethodsProps) {
             </button>
           </section>
         </div>
+        </>
       )}
     </div>
   );
