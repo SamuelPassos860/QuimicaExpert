@@ -1,19 +1,29 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import { View } from './constants';
 import type { AuthUser } from './types/auth';
 
-import Dashboard from './views/Dashboard';
-import Equipment from './views/Equipment';
-import Reports from './views/Reports';
-import Clients from './views/Clients';
-import Methods from './views/Methods';
-import Settings from './views/Settings';
-import FileUpload from './views/FileUpload';
-import Spectrophotometry from './views/Spectrophotometry';
 import AuthView from './views/Auth';
-import UserManagement from './views/UserManagement';
-import AuditLogs from './views/AuditLogs';
+
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const Equipment = lazy(() => import('./views/Equipment'));
+const Reports = lazy(() => import('./views/Reports'));
+const Clients = lazy(() => import('./views/Clients'));
+const Methods = lazy(() => import('./views/Methods'));
+const Settings = lazy(() => import('./views/Settings'));
+const FileUpload = lazy(() => import('./views/FileUpload'));
+const Spectrophotometry = lazy(() => import('./views/Spectrophotometry'));
+const UserManagement = lazy(() => import('./views/UserManagement'));
+const AuditLogs = lazy(() => import('./views/AuditLogs'));
+
+function ViewLoadingFallback() {
+  return (
+    <div className="glass-panel rounded-[28px] px-8 py-6 text-center border-white/10">
+      <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">Loading View</p>
+      <p className="mt-3 text-white/70">Preparing the selected workspace...</p>
+    </div>
+  );
+}
 
 function normalizeAuthUser(value: unknown): AuthUser | null {
   if (!value || typeof value !== 'object') {
@@ -168,7 +178,9 @@ export default function App() {
         userRole: currentUser.role
       }}
     >
-      {renderView(currentUser)}
+      <Suspense fallback={<ViewLoadingFallback />}>
+        {renderView(currentUser)}
+      </Suspense>
     </Layout>
   );
 }

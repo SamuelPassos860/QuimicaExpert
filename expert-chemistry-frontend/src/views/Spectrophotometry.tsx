@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, FlaskConical, Search, Sparkles, Sigma, Trash2, Waves } from 'lucide-react';
+import { Download, FlaskConical, FolderOpen, Search, Sparkles, Sigma, Trash2, Waves } from 'lucide-react';
 import type { ReportExportAuditPayload } from '../types/audit';
 import type { AuthUser } from '../types/auth';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
@@ -51,6 +51,13 @@ interface ApiSpectralRecord {
   absorption_wavelength_nm: number | string | null;
   molar_extinction_coefficient: number | string | null;
   absorption_solvent: string | null;
+}
+
+interface ReportProjectOption {
+  id: string;
+  name: string;
+  matrix: string;
+  wavelength: string;
 }
 
 interface SpectrophotometryProps {
@@ -116,6 +123,36 @@ function getSpectralSortPriority(value: string) {
   return 2;
 }
 
+function loadReportProjectOptions(currentUser: AuthUser): ReportProjectOption[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const storedValue = window.localStorage.getItem(`quimicaexpert:methods:v1:${currentUser.id}`);
+    if (!storedValue) return [];
+
+    const parsedValue = JSON.parse(storedValue) as unknown;
+    const projectsValue = parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue) && 'projects' in parsedValue
+      ? (parsedValue as { projects?: unknown }).projects
+      : parsedValue;
+
+    if (!Array.isArray(projectsValue)) return [];
+
+    return projectsValue
+      .filter((project): project is Record<string, unknown> => Boolean(project) && typeof project === 'object' && !Array.isArray(project))
+      .map((project) => ({
+        id: typeof project.id === 'string' ? project.id : '',
+        name: typeof project.compound === 'string' ? project.compound : '',
+        matrix: typeof project.matrix === 'string' ? project.matrix : 'N/A',
+        wavelength: typeof project.wavelength === 'string' ? project.wavelength : 'N/A'
+      }))
+      .filter((project) => project.id && project.name)
+      .sort((left, right) => left.name.localeCompare(right.name));
+  } catch (error) {
+    console.warn('Failed to load report project options:', error);
+    return [];
+  }
+}
+
 export default function Spectrophotometry({ currentUser }: SpectrophotometryProps) {
   const [activeTab, setActiveTab] = useState<TabType>('calculate');
   const [query, setQuery] = useState('');
@@ -135,6 +172,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteCas, setPendingDeleteCas] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SavedCompoundRecord | null>(null);
+  const [reportProjects, setReportProjects] = useState<ReportProjectOption[]>(() => loadReportProjectOptions(currentUser));
+  const [selectedReportProjectId, setSelectedReportProjectId] = useState('');
   const reportSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [compoundName, setCompoundName] = useState('');
@@ -148,6 +187,11 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [calcMode, setCalcMode] = useState<'absorbance' | 'concentration'>('absorbance');
   const [sampleAbsorbance, setSampleAbsorbance] = useState('0');
   const [blankAbsorbance, setBlankAbsorbance] = useState('0');
+
+  useEffect(() => {
+    setReportProjects(loadReportProjectOptions(currentUser));
+    setSelectedReportProjectId('');
+  }, [currentUser.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -320,6 +364,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
     : `(${formatNumber(sampleAbsValue)} - ${formatNumber(blankAbsValue)}) / (${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)})`;
 
   const hasSelectedCompound = compoundName.trim().length > 0;
+  const selectedReportProject = reportProjects.find((project) => project.id === selectedReportProjectId) ?? null;
   const hasCalculationInputs = calcMode === 'absorbance' 
     ? (pathLengthValue > 0 && concentrationValue > 0)
     : (pathLengthValue > 0 && sampleAbsValue > 0);
@@ -361,7 +406,11 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         concentrationValue: calcMode === 'concentration' ? calculatedConcentration : concentrationValue,
         absorbance: effectiveAbsorbance
       },
-      overrides
+      {
+        projectId: selectedReportProject?.id,
+        projectName: selectedReportProject?.name,
+        ...overrides
+      }
     );
 
   const resetManualEntry = () => {
@@ -455,6 +504,12 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   };
 
   const exportReportPdf = async (payload = createCurrentReportPayload(), options?: { skipSnapshotSave?: boolean }) => {
+    if (!payload.projectId && !payload.projectName) {
+      window.alert('Choose the project where this result should be placed before generating the report.');
+      reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     if (!options?.skipSnapshotSave) {
       try {
         await saveReportSnapshot(payload);
@@ -941,7 +996,35 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 </button>
               </div>
 
+              <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-white/30 font-bold">
+                  <FolderOpen size={14} className="text-primary" />
+                  Project destination
+                </label>
+                <select
+                  value={selectedReportProjectId}
+                  onChange={(event) => setSelectedReportProjectId(event.target.value)}
+                  className="mt-3 w-full rounded-xl bg-[#101827] border border-white/10 px-4 py-3 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-[#131f34]"
+                >
+                  <option value="">Choose where this result will be placed</option>
+                  {reportProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} - {project.id}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-white/40">
+                  {selectedReportProject
+                    ? `${selectedReportProject.matrix} - ${selectedReportProject.wavelength}`
+                    : 'Projects are loaded automatically from the project library as new ones are created.'}
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Project</p>
+                  <p className="text-white mt-2 font-semibold">{selectedReportProject?.name || 'Not selected'}</p>
+                </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Generated by</p>
                   <p className="text-white mt-2 font-semibold">{currentUser.fullName}</p>
@@ -978,6 +1061,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 <p>--- FINAL REPORT ---</p>
                 <p className="mt-3">Generated by: {currentUser.fullName} ({currentUser.userId})</p>
                 <p>Formula: {calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
+                <p>Project: {selectedReportProject?.name || 'Not selected'}</p>
                 <p className="mt-3">Compound: {compoundName || 'Not identified'}</p>
                 <p>Epsilon: {formatNumber(epsilonValue)} M^-1 cm^-1</p>
                 <p>Lambda max: {formatWavelengthMax(lambdaMax)}</p>

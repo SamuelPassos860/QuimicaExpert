@@ -102,6 +102,8 @@ export async function getDashboardSummary(currentUser: AuthUser) {
       SELECT
         id,
         report_id,
+        project_id,
+        project_name,
         owner_user_id,
         owner_user_identifier,
         owner_full_name,
@@ -174,6 +176,8 @@ export async function getDashboardSummary(currentUser: AuthUser) {
     recentReports: recentReportsResult.rows.map((row) => ({
       id: Number(row.id),
       reportId: row.report_id,
+      projectId: row.project_id || undefined,
+      projectName: row.project_name || undefined,
       compoundName: row.compound_name,
       source: row.source,
       absorbance: parseChemicalNumber(row.absorbance),

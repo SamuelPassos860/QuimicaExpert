@@ -523,6 +523,7 @@ function openPrintableCalibrationReport(payload: {
   points: { x: number; y: number }[];
   sampleAbsorbance: number | null;
   calculatedConcentration: number | null;
+  dilutionFactor: number;
 }) {
   const reportWindow = window.open('', '_blank', 'width=900,height=1200');
 
@@ -535,6 +536,7 @@ function openPrintableCalibrationReport(payload: {
   const equation = `y = ${payload.slope.toFixed(6)}x ${payload.intercept >= 0 ? '+' : '-'} ${Math.abs(payload.intercept).toFixed(6)}`;
   const sampleText = payload.sampleAbsorbance === null ? 'N/A' : formatNumber(payload.sampleAbsorbance);
   const concentrationText = payload.calculatedConcentration === null ? 'N/A' : `${formatNumber(payload.calculatedConcentration)} mol/L`;
+  const dilutionText = `${formatNumber(payload.dilutionFactor)}x`;
   const pointRows = payload.points.map((point, index) => `
     <tr>
       <td>P${index + 1}</td>
@@ -653,7 +655,7 @@ function openPrintableCalibrationReport(payload: {
           th { background: #eef3ff; color: #173b79; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
           tr:last-child td { border-bottom: 0; }
           .footer { margin-top: 42px; padding-top: 20px; border-top: 1px solid #d8deea; display: flex; justify-content: space-between; gap: 24px; color: #68758d; font-size: 11px; }
-          @media print { body { background: #ffffff; } .page { margin: 0; box-shadow: none; width: auto; max-width: none; } }
+          @media print { body { background: #ffffff; } .page { margin: 0; box-shadow: none; width: auto; min-height: auto; max-width: none; break-after: avoid; page-break-after: avoid; } }
         </style>
       </head>
       <body>
@@ -679,6 +681,7 @@ function openPrintableCalibrationReport(payload: {
               <div><p class="mini-label">Correlation</p><p class="mini-value">${escapeHtml(payload.r2.toFixed(6))}</p></div>
               <div><p class="mini-label">Sample Absorbance</p><p class="mini-value">${escapeHtml(sampleText)}</p></div>
               <div><p class="mini-label">Calculated Concentration</p><p class="mini-value alt">${escapeHtml(concentrationText)}</p></div>
+              <div><p class="mini-label">Dilution Factor</p><p class="mini-value">${escapeHtml(dilutionText)}</p></div>
             </div>
           </section>
           <section class="content-grid">
@@ -785,7 +788,7 @@ function openPrintableProjectMethodReport(payload: {
           th { background: #eef3ff; color: #173b79; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
           tr:last-child td { border-bottom: 0; }
           .footer { margin-top: 42px; padding-top: 20px; border-top: 1px solid #d8deea; display: flex; justify-content: space-between; gap: 24px; color: #68758d; font-size: 11px; }
-          @media print { body { background: #ffffff; } .page { margin: 0; box-shadow: none; width: auto; max-width: none; } }
+          @media print { body { background: #ffffff; } .page { margin: 0; box-shadow: none; width: auto; min-height: auto; max-width: none; break-after: avoid; page-break-after: avoid; } }
         </style>
       </head>
       <body>
@@ -914,6 +917,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [newX, setNewX] = useState('');
   const [newY, setNewY] = useState('');
   const [sampleY, setSampleY] = useState('');
+  const [regressionSampleDilution, setRegressionSampleDilution] = useState('1');
   const [regressionSerialTarget, setRegressionSerialTarget] = useState<'point' | 'sample'>('point');
   const filteredProjects = projects.filter((project) => {
     const search = projectSearch.trim().toLowerCase();
@@ -1260,6 +1264,32 @@ export default function Methods({ currentUser }: MethodsProps) {
     setMethodInputs((currentInputs) => ({ ...currentInputs, [target]: value }));
   };
 
+  const saveReportSnapshot = async (payload: ReturnType<typeof buildReportPayload>) => {
+    const response = await fetch('/api/reports', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+  };
+
+  const registerCompletedAnalysis = async (payload: ReturnType<typeof buildReportPayload>) => {
+    try {
+      await saveReportSnapshot(payload);
+      return true;
+    } catch (error) {
+      console.error('Failed to register completed analysis report:', error);
+      window.alert('Unable to register this analysis as a completed report. The dashboard will only update after the report is saved.');
+      return false;
+    }
+  };
+
   const calculateProjectMethod = (method: ProjectMethod | null) => {
     if (!method) return null;
 
@@ -1299,7 +1329,7 @@ export default function Methods({ currentUser }: MethodsProps) {
     return null;
   };
 
-  const printProjectMethodReport = () => {
+  const printProjectMethodReport = async () => {
     if (!openedProject || !selectedMethod) return;
 
     if (selectedMethod.type === 'calibration-curve') {
@@ -1351,6 +1381,31 @@ export default function Methods({ currentUser }: MethodsProps) {
         inputs.push({ label: 'Transmittance (%)', value: methodInputs.transmittance });
       }
     }
+
+    const isAbsorbanceResult = selectedMethod.type === 'blank-correction' || selectedMethod.type === 'transmittance-absorbance';
+    const sampleAbsorbanceForReport = parseDecimal(methodInputs.sampleAbsorbance);
+    const numericResultValue = resultValue ?? 0;
+    const completedReportPayload = buildReportPayload(
+      currentUser,
+      {
+        compoundName: `${openedProject.compound} - ${selectedMethod.name}`,
+        casId: openedProject.id,
+        lambdaMax: openedProject.wavelength || 'N/A',
+        solvent: openedProject.matrix || 'N/A',
+        source: selectedMethod.type,
+        epsilonValue: 0,
+        pathLengthValue: 0,
+        concentrationValue: isAbsorbanceResult ? 0 : numericResultValue,
+        absorbance: isAbsorbanceResult ? numericResultValue : sampleAbsorbanceForReport || numericResultValue
+      },
+      {
+        projectId: openedProject.id,
+        projectName: openedProject.compound
+      }
+    );
+
+    const registered = await registerCompletedAnalysis(completedReportPayload);
+    if (!registered) return;
 
     openPrintableProjectMethodReport({
       currentUser,
@@ -1405,6 +1460,38 @@ export default function Methods({ currentUser }: MethodsProps) {
     return { slope, intercept, r2, points: validPoints };
   };
 
+  const getRegressionSampleEvaluation = () => {
+    const results = calculateRegression();
+    const sampleAbsorbance = Number.parseFloat(sampleY.replace(',', '.'));
+    const dilution = Math.max(1, parseDecimal(regressionSampleDilution) || 1);
+
+    if (!results || Number.isNaN(sampleAbsorbance) || results.slope === 0) {
+      return {
+        results,
+        sampleAbsorbance,
+        dilution,
+        curveMaxY: null as number | null,
+        isAboveCalibrationRange: false,
+        dilutedConcentration: null as number | null,
+        finalConcentration: null as number | null
+      };
+    }
+
+    const curveMaxY = Math.max(...results.points.map((point) => point.y));
+    const dilutedConcentration = (sampleAbsorbance - results.intercept) / results.slope;
+    const isAboveCalibrationRange = sampleAbsorbance > curveMaxY;
+
+    return {
+      results,
+      sampleAbsorbance,
+      dilution,
+      curveMaxY,
+      isAboveCalibrationRange,
+      dilutedConcentration,
+      finalConcentration: isAboveCalibrationRange ? null : dilutedConcentration * dilution
+    };
+  };
+
   // Synchronizes sample absorbance based on the selected wavelength from the scan.
   useEffect(() => {
     const targetNum = Number.parseFloat(targetWavelength.replace(',', '.'));
@@ -1446,7 +1533,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   const finalResult = calcMode === 'concentration' ? resultConcentration : resultAbsorbance;
 
   // Generates the printable report without saving a database snapshot.
-  const printLambertReport = () => {
+  const printLambertReport = async () => {
     const payload = buildReportPayload(
       currentUser,
       {
@@ -1459,24 +1546,58 @@ export default function Methods({ currentUser }: MethodsProps) {
         pathLengthValue: pathVal,
         concentrationValue: calcMode === 'concentration' ? finalResult : inputConcVal,
         absorbance: calcMode === 'absorbance' ? finalResult : effectiveAbs
-      }
+      },
+      returnTargetProject
+        ? {
+            projectId: returnTargetProject.id,
+            projectName: returnTargetProject.compound
+          }
+        : undefined
     );
+
+    const registered = await registerCompletedAnalysis(payload);
+    if (!registered) return;
 
     openPrintableReport(payload);
   };
 
-  const printCalibrationReport = () => {
-    const results = calculateRegression();
-    const sampleAbsorbance = Number.parseFloat(sampleY.replace(',', '.'));
+  const printCalibrationReport = async () => {
+    const sampleEvaluation = getRegressionSampleEvaluation();
+    const results = sampleEvaluation.results;
 
     if (!results) {
       window.alert('Add at least 5 active valid points before printing a calibration report.');
       return;
     }
 
-    const calculatedSampleConcentration = !Number.isNaN(sampleAbsorbance) && results.slope !== 0
-      ? (sampleAbsorbance - results.intercept) / results.slope
-      : 0;
+    if (sampleEvaluation.isAboveCalibrationRange) {
+      window.alert('Sample absorbance is above the calibration curve range. Dilute the sample and enter a new in-range reading before printing the report.');
+      return;
+    }
+
+    const completedReportPayload = buildReportPayload(
+      currentUser,
+      {
+        compoundName: 'Linear Regression Calibration',
+        casId: 'CAL-CURVE',
+        lambdaMax: 'N/A',
+        solvent: 'N/A',
+        source: 'Calibration Curve',
+        epsilonValue: results.slope,
+        pathLengthValue: sampleEvaluation.dilution,
+        concentrationValue: sampleEvaluation.finalConcentration ?? 0,
+        absorbance: Number.isNaN(sampleEvaluation.sampleAbsorbance) ? 0 : sampleEvaluation.sampleAbsorbance
+      },
+      returnTargetProject
+        ? {
+            projectId: returnTargetProject.id,
+            projectName: returnTargetProject.compound
+          }
+        : undefined
+    );
+
+    const registered = await registerCompletedAnalysis(completedReportPayload);
+    if (!registered) return;
 
     openPrintableCalibrationReport({
       currentUser,
@@ -1484,8 +1605,9 @@ export default function Methods({ currentUser }: MethodsProps) {
       intercept: results.intercept,
       r2: results.r2,
       points: results.points,
-      sampleAbsorbance: Number.isNaN(sampleAbsorbance) ? null : sampleAbsorbance,
-      calculatedConcentration: Number.isNaN(sampleAbsorbance) ? null : calculatedSampleConcentration
+      sampleAbsorbance: Number.isNaN(sampleEvaluation.sampleAbsorbance) ? null : sampleEvaluation.sampleAbsorbance,
+      calculatedConcentration: sampleEvaluation.finalConcentration,
+      dilutionFactor: sampleEvaluation.dilution
     });
   };
 
@@ -2626,7 +2748,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <h2 className="text-xl font-display font-bold text-white">Data Calibration Curve</h2>
               </div>
               
-              <div className="flex flex-wrap gap-2">
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
                 <input 
                   type="file" 
                   ref={regressionFileInputRef} 
@@ -2637,28 +2759,30 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <button 
                   onClick={() => setRegressionPoints([])}
                   title="Clear All Points"
-                  className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                  aria-label="Clear all calibration points"
+                  className="h-11 w-11 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all inline-flex items-center justify-center"
                 >
                   <RotateCcw size={18} />
                 </button>
                 <button 
                   onClick={() => regressionFileInputRef.current?.click()}
                   title="Import Points from File"
-                  className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"
+                  aria-label="Import calibration points from TXT, CSV, or LOG file"
+                  className="h-11 w-11 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all inline-flex items-center justify-center"
                 >
                   <FileUp size={18} />
                 </button>
                 <button 
                   onClick={isSerialConnected ? disconnectSerial : connectSerial}
                   title={isSerialConnected ? "Disconnect Equipment" : "Connect Serial Equipment"}
-                  className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest ${
+                  aria-label={isSerialConnected ? "Disconnect equipment" : "Connect serial equipment"}
+                  className={`h-11 w-11 shrink-0 rounded-xl border transition-all inline-flex items-center justify-center ${
                     isSerialConnected 
                       ? 'bg-green-500/10 border-green-500/30 text-green-400' 
                       : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white'
                   }`}
                 >
                   {isSerialConnected ? <Unlink size={18} /> : <Link size={18} />}
-                  {isSerialConnected ? 'Online' : 'Hardware'}
                 </button>
               </div>
             </div>
@@ -2923,24 +3047,69 @@ export default function Methods({ currentUser }: MethodsProps) {
                 {/* Sample Analysis Field */}
                 <div className="mt-6 pt-6 border-t border-white/10">
                   <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-4">Sample Quantification</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                    <label className="block space-y-2">
-                      <span className="text-[10px] font-mono text-secondary uppercase tracking-widest">Sample Absorbance (Y)</span>
-                      <input type="number" step="any" value={sampleY} onChange={(e) => setSampleY(e.target.value)} className="w-full rounded-xl bg-white/[0.05] border border-white/10 px-4 py-3 text-white outline-none focus:border-secondary/40" placeholder="0.000" />
-                    </label>
-                    <div className="rounded-xl bg-secondary/10 border border-secondary/20 p-4">
-                      <p className="text-[10px] font-mono uppercase text-secondary/60 tracking-widest">Calculated Conc. (X)</p>
-                      <p className="text-xl font-display font-bold text-white mt-1">
-                        {(() => {
-                          const results = calculateRegression();
-                          const yVal = parseFloat(sampleY);
-                          if (!results || isNaN(yVal) || results.slope === 0) return '---';
-                          const xVal = (yVal - results.intercept) / results.slope;
-                          return xVal.toFixed(6);
-                        })()} <span className="text-xs font-mono text-white/40">mol/L</span>
-                      </p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const sampleEvaluation = getRegressionSampleEvaluation();
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-mono text-secondary uppercase tracking-widest">Sample Absorbance (Y)</span>
+                            <input
+                              type="number"
+                              step="any"
+                              value={sampleY}
+                              onChange={(e) => setSampleY(e.target.value)}
+                              className={`w-full rounded-xl bg-white/[0.05] border px-4 py-3 text-white outline-none focus:border-secondary/40 ${
+                                sampleEvaluation.isAboveCalibrationRange ? 'border-red-400/40' : 'border-white/10'
+                              }`}
+                              placeholder="0.000"
+                            />
+                          </label>
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Dilution Factor</span>
+                            <input
+                              type="number"
+                              step="any"
+                              min="1"
+                              value={regressionSampleDilution}
+                              onChange={(e) => setRegressionSampleDilution(e.target.value)}
+                              className="w-full rounded-xl bg-white/[0.05] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                              placeholder="1"
+                            />
+                          </label>
+                          <div className={`rounded-xl border p-4 ${
+                            sampleEvaluation.isAboveCalibrationRange
+                              ? 'bg-red-500/10 border-red-400/25'
+                              : 'bg-secondary/10 border-secondary/20'
+                          }`}>
+                            <p className={`text-[10px] font-mono uppercase tracking-widest ${
+                              sampleEvaluation.isAboveCalibrationRange ? 'text-red-200/80' : 'text-secondary/60'
+                            }`}>
+                              Final Conc. (X)
+                            </p>
+                            <p className="text-xl font-display font-bold text-white mt-1">
+                              {sampleEvaluation.finalConcentration === null ? '---' : sampleEvaluation.finalConcentration.toFixed(6)}
+                              <span className="text-xs font-mono text-white/40 ml-1">mol/L</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {sampleEvaluation.isAboveCalibrationRange && (
+                          <div className="rounded-xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-100 leading-relaxed">
+                            Sample response is above the calibration range. Highest active curve point is {sampleEvaluation.curveMaxY !== null ? sampleEvaluation.curveMaxY.toFixed(4) : '---'} AU.
+                            Dilute the sample and enter the new measured absorbance before calculating or printing the report.
+                          </div>
+                        )}
+
+                        {sampleEvaluation.finalConcentration !== null && sampleEvaluation.dilution > 1 && (
+                          <div className="rounded-xl border border-primary/15 bg-primary/[0.05] p-4 text-xs text-white/45 leading-relaxed">
+                            Curve concentration {sampleEvaluation.dilutedConcentration?.toFixed(6)} mol/L x dilution factor {sampleEvaluation.dilution.toFixed(2)} = final concentration {sampleEvaluation.finalConcentration.toFixed(6)} mol/L.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
             </div>
             <button

@@ -9,6 +9,8 @@ const listReportsQuery = `
   SELECT
     id,
     report_id,
+    project_id,
+    project_name,
     owner_user_id,
     owner_user_identifier,
     owner_full_name,
@@ -26,7 +28,7 @@ const listReportsQuery = `
   FROM reports
   WHERE
     ($1::boolean = true OR owner_user_id = $2)
-    AND ($3 = '' OR report_id ILIKE $3 OR compound_name ILIKE $3 OR cas_id ILIKE $3)
+    AND ($3 = '' OR report_id ILIKE $3 OR project_id ILIKE $3 OR project_name ILIKE $3 OR compound_name ILIKE $3 OR cas_id ILIKE $3)
   ORDER BY created_at DESC, id DESC
   LIMIT 500;
 `;
@@ -34,6 +36,8 @@ const listReportsQuery = `
 const insertReportQuery = `
   INSERT INTO reports (
     report_id,
+    project_id,
+    project_name,
     owner_user_id,
     owner_user_identifier,
     owner_full_name,
@@ -48,10 +52,29 @@ const insertReportQuery = `
     absorbance,
     generated_at
   )
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+  ON CONFLICT (report_id) DO UPDATE SET
+    project_id = EXCLUDED.project_id,
+    project_name = EXCLUDED.project_name,
+    owner_user_id = EXCLUDED.owner_user_id,
+    owner_user_identifier = EXCLUDED.owner_user_identifier,
+    owner_full_name = EXCLUDED.owner_full_name,
+    compound_name = EXCLUDED.compound_name,
+    cas_id = EXCLUDED.cas_id,
+    lambda_max = EXCLUDED.lambda_max,
+    solvent = EXCLUDED.solvent,
+    source = EXCLUDED.source,
+    epsilon_value = EXCLUDED.epsilon_value,
+    path_length_value = EXCLUDED.path_length_value,
+    concentration_value = EXCLUDED.concentration_value,
+    absorbance = EXCLUDED.absorbance,
+    generated_at = EXCLUDED.generated_at,
+    created_at = NOW()
   RETURNING
     id,
     report_id,
+    project_id,
+    project_name,
     owner_user_id,
     owner_user_identifier,
     owner_full_name,
@@ -73,6 +96,8 @@ async function ensureReportsSchema() {
     CREATE TABLE IF NOT EXISTS reports (
       id BIGSERIAL PRIMARY KEY,
       report_id VARCHAR(120) NOT NULL UNIQUE,
+      project_id VARCHAR(120) NOT NULL DEFAULT '',
+      project_name VARCHAR(255) NOT NULL DEFAULT '',
       owner_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       owner_user_identifier VARCHAR(100) NOT NULL,
       owner_full_name VARCHAR(160) NOT NULL,
@@ -93,6 +118,16 @@ async function ensureReportsSchema() {
   await pool.query(`
     ALTER TABLE reports
     ADD COLUMN IF NOT EXISTS solvent VARCHAR(160) NOT NULL DEFAULT 'N/A'
+  `);
+
+  await pool.query(`
+    ALTER TABLE reports
+    ADD COLUMN IF NOT EXISTS project_id VARCHAR(120) NOT NULL DEFAULT ''
+  `);
+
+  await pool.query(`
+    ALTER TABLE reports
+    ADD COLUMN IF NOT EXISTS project_name VARCHAR(255) NOT NULL DEFAULT ''
   `);
 
   await pool.query(`
@@ -118,6 +153,8 @@ function mapReportRow(row: ReportRow) {
   return {
     id: Number(row.id),
     reportId: row.report_id,
+    projectId: row.project_id || undefined,
+    projectName: row.project_name || undefined,
     compoundName: row.compound_name,
     casId: row.cas_id,
     lambdaMax: row.lambda_max,
@@ -143,6 +180,8 @@ export async function createReport(input: CreateReportInput) {
   await initializeReportsSchema();
   const result = await pool.query<ReportRow>(insertReportQuery, [
     input.reportId,
+    input.projectId,
+    input.projectName,
     input.ownerUserId,
     input.ownerUserIdentifier,
     input.ownerFullName,
