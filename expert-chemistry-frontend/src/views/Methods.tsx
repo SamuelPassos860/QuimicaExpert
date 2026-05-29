@@ -5,6 +5,8 @@ import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
 type MethodTab = 'lambert-beer' | 'linear-regression';
 type ProjectMethodType = 'direct-proportion' | 'blank-correction' | 'transmittance-absorbance' | 'calibration-curve' | 'custom-formula';
+type MethodInputKey = 'sampleAbsorbance' | 'standardAbsorbance' | 'standardConcentration' | 'concentrationUnit' | 'blankAbsorbance' | 'transmittance';
+type ProjectReadingTarget = MethodInputKey | `custom:${string}`;
 
 interface FormulaConstant {
   name: string;
@@ -18,6 +20,7 @@ interface ProjectMethod {
   type: ProjectMethodType;
   tab?: MethodTab;
   constants?: FormulaConstant[];
+  resultUnit?: string;
 }
 
 interface AnalyticalProject {
@@ -92,7 +95,8 @@ function cloneInitialProjects() {
     inputs: [...project.inputs],
     methods: project.methods.map((method) => ({
       ...method,
-      constants: method.constants ? [...method.constants] : undefined
+      constants: method.constants ? [...method.constants] : undefined,
+      resultUnit: method.resultUnit
     }))
   }));
 }
@@ -144,7 +148,8 @@ function normalizeSavedMethod(value: unknown): ProjectMethod | null {
     expression: value.expression,
     type: type as ProjectMethodType,
     tab: methodTabs.includes(tab as MethodTab) ? tab as MethodTab : undefined,
-    constants: normalizeFormulaConstants(value.constants)
+    constants: normalizeFormulaConstants(value.constants),
+    resultUnit: typeof value.resultUnit === 'string' ? value.resultUnit : undefined
   };
 }
 
@@ -264,6 +269,22 @@ const methodTypeOptions: { value: ProjectMethodType; label: string; expression: 
 function parseDecimal(value: string) {
   const parsed = Number.parseFloat(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractEquipmentReadingValue(text: string) {
+  const cleanText = text.replace(/"/g, '').trim();
+  const wavelengthPair = cleanText.match(/(\d{3,4}(?:[.,]\d+)?)[,\s\t;|]+([-+]?\d+[.,]?\d*)/);
+
+  if (wavelengthPair) {
+    const wavelength = Number.parseFloat(wavelengthPair[1].replace(',', '.'));
+    const reading = Number.parseFloat(wavelengthPair[2].replace(',', '.'));
+    if (Number.isFinite(wavelength) && wavelength >= 190 && wavelength <= 1100 && Number.isFinite(reading) && reading < 10) {
+      return wavelengthPair[2].replace(',', '.');
+    }
+  }
+
+  const numericMatch = cleanText.match(/(?<!\d)[-+]?\d*[.,]?\d+(?!\d)/);
+  return numericMatch ? numericMatch[0].replace(',', '.') : null;
 }
 
 function normalizeFormulaName(value: string) {
@@ -446,7 +467,7 @@ function evaluateCustomFormula(expression: string, variableValues: Record<string
   const stack: number[] = [];
   for (const token of rpn) {
     if (token.type === 'number') {
-      stack.push(token.value);''
+      stack.push(token.value);
       continue;
     }
 
@@ -850,6 +871,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [newMethodName, setNewMethodName] = useState('');
   const [newMethodType, setNewMethodType] = useState<ProjectMethodType>('direct-proportion');
   const [newMethodExpression, setNewMethodExpression] = useState('');
+  const [newMethodResultUnit, setNewMethodResultUnit] = useState('');
   const [formulaBuilderVariables, setFormulaBuilderVariables] = useState<string[]>([]);
   const [formulaBuilderConstants, setFormulaBuilderConstants] = useState<FormulaConstant[]>([]);
   const [newVariableName, setNewVariableName] = useState('');
@@ -867,6 +889,7 @@ export default function Methods({ currentUser }: MethodsProps) {
     blankAbsorbance: '',
     transmittance: ''
   });
+  const [projectSerialTarget, setProjectSerialTarget] = useState<ProjectReadingTarget>('sampleAbsorbance');
   const [customFormulaInputs, setCustomFormulaInputs] = useState<Record<string, string>>({});
   
   // States para a Calculadora Lambert-Beer
@@ -914,6 +937,7 @@ export default function Methods({ currentUser }: MethodsProps) {
   const activeTabRef = useRef(activeTab);
   const lambertSerialTargetRef = useRef(lambertSerialTarget);
   const regressionSerialTargetRef = useRef(regressionSerialTarget);
+  const projectSerialTargetRef = useRef(projectSerialTarget);
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
@@ -923,6 +947,9 @@ export default function Methods({ currentUser }: MethodsProps) {
   useEffect(() => {
     regressionSerialTargetRef.current = regressionSerialTarget;
   }, [regressionSerialTarget]);
+  useEffect(() => {
+    projectSerialTargetRef.current = projectSerialTarget;
+  }, [projectSerialTarget]);
   useEffect(() => {
     storeProjects(currentUser, projects);
   }, [currentUser, projects]);
@@ -1145,7 +1172,8 @@ export default function Methods({ currentUser }: MethodsProps) {
       expression: methodExpression,
       type: newMethodType,
       tab: newMethodType === 'blank-correction' || newMethodType === 'transmittance-absorbance' ? 'lambert-beer' : 'linear-regression',
-      constants: newMethodType === 'custom-formula' ? formulaBuilderConstants : undefined
+      constants: newMethodType === 'custom-formula' ? formulaBuilderConstants : undefined,
+      resultUnit: newMethodType === 'custom-formula' ? newMethodResultUnit.trim() || undefined : undefined
     };
 
     setProjects((currentProjects) => currentProjects.map((project) => (
@@ -1156,6 +1184,7 @@ export default function Methods({ currentUser }: MethodsProps) {
     setSelectedMethodId(methodId);
     setNewMethodName('');
     setNewMethodExpression('');
+    setNewMethodResultUnit('');
     setNewMethodType('direct-proportion');
     setFormulaBuilderVariables([]);
     setFormulaBuilderConstants([]);
@@ -1175,6 +1204,60 @@ export default function Methods({ currentUser }: MethodsProps) {
 
   const updateCustomFormulaInput = (variable: string, value: string) => {
     setCustomFormulaInputs((currentInputs) => ({ ...currentInputs, [variable]: value }));
+  };
+
+  const customFormulaVariables = customFormulaResult?.variables ?? [];
+
+  const getProjectReadingTargets = (method: ProjectMethod | null) => {
+    if (!method) return [] as { value: ProjectReadingTarget; label: string }[];
+
+    if (method.type === 'direct-proportion') {
+      return [
+        { value: 'sampleAbsorbance' as const, label: 'Sample A' },
+        { value: 'standardAbsorbance' as const, label: 'Standard A' }
+      ];
+    }
+
+    if (method.type === 'blank-correction') {
+      return [
+        { value: 'sampleAbsorbance' as const, label: 'Sample A' },
+        { value: 'blankAbsorbance' as const, label: 'Blank A' }
+      ];
+    }
+
+    if (method.type === 'transmittance-absorbance') {
+      return [{ value: 'transmittance' as const, label: 'Transmittance' }];
+    }
+
+    if (method.type === 'custom-formula') {
+      return customFormulaVariables.map((variable) => ({
+        value: `custom:${variable}` as const,
+        label: variable
+      }));
+    }
+
+    return [] as { value: ProjectReadingTarget; label: string }[];
+  };
+
+  const projectReadingTargets = getProjectReadingTargets(selectedMethod);
+
+  useEffect(() => {
+    if (projectReadingTargets.length === 0) return;
+    if (!projectReadingTargets.some((target) => target.value === projectSerialTarget)) {
+      setProjectSerialTarget(projectReadingTargets[0].value);
+    }
+  }, [projectReadingTargets, projectSerialTarget]);
+
+  const applyProjectHardwareReading = (value: string) => {
+    const target = projectSerialTargetRef.current;
+
+    if (target.startsWith('custom:')) {
+      const variable = target.replace('custom:', '');
+      setCustomFormulaInputs((currentInputs) => ({ ...currentInputs, [variable]: value }));
+      return;
+    }
+
+    setMethodInputs((currentInputs) => ({ ...currentInputs, [target]: value }));
   };
 
   const calculateProjectMethod = (method: ProjectMethod | null) => {
@@ -1233,6 +1316,7 @@ export default function Methods({ currentUser }: MethodsProps) {
       const result = evaluateCustomFormula(selectedMethod.expression, customFormulaInputs, selectedMethod.constants);
       resultLabel = 'Formula Result';
       resultValue = result.value;
+      resultUnit = selectedMethod.resultUnit ?? '';
       inputs.push(...result.variables.map((variable) => ({
         label: variable,
         value: customFormulaInputs[variable] ?? ''
@@ -1473,8 +1557,7 @@ export default function Methods({ currentUser }: MethodsProps) {
           if (done) break;
           const text = new TextDecoder().decode(value);
           
-          const numericMatch = text.match(/(?<!\d)[-+]?\d*[.,]?\d+(?!\d)/);
-          const val = numericMatch ? numericMatch[0].replace(',', '.') : null;
+          const val = extractEquipmentReadingValue(text);
 
           if (activeTabRef.current === 'lambert-beer') {
             const { count } = processDataStream(text);
@@ -1494,6 +1577,8 @@ export default function Methods({ currentUser }: MethodsProps) {
                 setNewY(val);
               }
             }
+          } else if (activeTabRef.current === 'library' && val) {
+            applyProjectHardwareReading(val);
           }
         }
       } finally {
@@ -1692,6 +1777,16 @@ export default function Methods({ currentUser }: MethodsProps) {
 
               {newMethodType === 'custom-formula' && (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-5">
+                  <label className="block space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Result unit</span>
+                    <input
+                      value={newMethodResultUnit}
+                      onChange={(event) => setNewMethodResultUnit(event.target.value)}
+                      className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                      placeholder="mg/L, mol/L, AU/min, %, ppm..."
+                    />
+                  </label>
+
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                     <div>
                       <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Formula Builder</p>
@@ -1897,6 +1992,44 @@ export default function Methods({ currentUser }: MethodsProps) {
                     )}
                   </div>
 
+                  {selectedMethod && selectedMethod.type !== 'calibration-curve' && projectReadingTargets.length > 0 && (
+                    <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-mono uppercase tracking-widest text-white/40">Equipment reading target</p>
+                          <p className="text-xs text-white/35 mt-1">Incoming hardware values fill the selected field.</p>
+                        </div>
+                        <button
+                          onClick={isSerialConnected ? disconnectSerial : connectSerial}
+                          title={isSerialConnected ? 'Disconnect Equipment' : 'Connect Serial Equipment'}
+                          className={`px-4 py-2.5 rounded-xl border transition-all flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest ${
+                            isSerialConnected
+                              ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                              : 'bg-white/[0.03] border-white/10 text-white/45 hover:text-white hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          {isSerialConnected ? <Unlink size={16} /> : <Link size={16} />}
+                          {isSerialConnected ? 'Online' : 'Hardware'}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                        {projectReadingTargets.map((target) => (
+                          <button
+                            key={target.value}
+                            onClick={() => setProjectSerialTarget(target.value)}
+                            className={`px-3 py-3 rounded-xl text-[10px] font-mono uppercase tracking-[0.16em] transition-all border break-words ${
+                              projectSerialTarget === target.value
+                                ? 'bg-primary text-on-primary border-primary'
+                                : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
+                            }`}
+                          >
+                            {target.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {selectedMethod && getMethodTargetTab(selectedMethod) === 'linear-regression' && selectedMethod.type === 'calibration-curve' ? (
                     <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-6 text-sm text-white/55 leading-relaxed">
                       This method uses the linear regression calculator. Open it to add calibration points, calculate the equation and quantify the sample from absorbance.
@@ -1940,6 +2073,9 @@ export default function Methods({ currentUser }: MethodsProps) {
                         </p>
                         <p className="text-3xl font-display font-bold text-white mt-3">
                           {customFormulaResult?.value !== null && customFormulaResult?.value !== undefined ? formatNumber(customFormulaResult.value) : '---'}
+                          {selectedMethod.resultUnit && (
+                            <span className="text-sm font-mono text-white/40 ml-2">{selectedMethod.resultUnit}</span>
+                          )}
                         </p>
                         {customFormulaResult?.error && (
                           <p className="text-xs text-white/45 mt-3">{customFormulaResult.error}</p>
@@ -2659,7 +2795,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 </div>
 
                 {/* Chart Visualization - Integrated in the middle */}
-                <div className="relative w-full aspect-video bg-[#08101f]/60 rounded-2xl border border-white/5 p-6 overflow-hidden mb-8">
+                <div className="relative w-full h-[320px] sm:h-[360px] bg-[#08101f]/60 rounded-2xl border border-white/5 p-3 sm:p-4 overflow-hidden mb-8">
                   {(() => {
                     const allValid = regressionPoints
                       .map((p, i) => ({ x: parseFloat(p.x), y: parseFloat(p.y), active: p.active, originalIndex: i }))
@@ -2673,55 +2809,112 @@ export default function Methods({ currentUser }: MethodsProps) {
                     );
 
                     const results = calculateRegression();
-                    const padding = 40;
-                    const width = 400;
-                    const height = 240;
+                    const width = 560;
+                    const height = 340;
+                    const chartPadding = { top: 24, right: 24, bottom: 68, left: 78 };
+                    const plotLeft = chartPadding.left;
+                    const plotTop = chartPadding.top;
+                    const plotWidth = width - chartPadding.left - chartPadding.right;
+                    const plotHeight = height - chartPadding.top - chartPadding.bottom;
                     
-                    const minX = Math.min(...allValid.map(p => p.x));
-                    const maxX = Math.max(...allValid.map(p => p.x));
-                    const minY = Math.min(...allValid.map(p => p.y));
-                    const maxY = Math.max(...allValid.map(p => p.y));
+                    const rawMinX = Math.min(...allValid.map(p => p.x));
+                    const rawMaxX = Math.max(...allValid.map(p => p.x));
+                    const rawMinY = Math.min(...allValid.map(p => p.y));
+                    const rawMaxY = Math.max(...allValid.map(p => p.y));
                     
-                    const rangeX = (maxX - minX) || 1;
-                    const rangeY = (maxY - minY) || 1;
+                    const rangeX = (rawMaxX - rawMinX) || 1;
+                    const rangeY = (rawMaxY - rawMinY) || 1;
+                    const minX = rawMinX - rangeX * 0.08;
+                    const maxX = rawMaxX + rangeX * 0.08;
+                    const minY = rawMinY - rangeY * 0.12;
+                    const maxY = rawMaxY + rangeY * 0.12;
+                    const xTicks = Array.from({ length: 5 }, (_, index) => minX + ((maxX - minX) / 4) * index);
+                    const yTicks = Array.from({ length: 5 }, (_, index) => minY + ((maxY - minY) / 4) * index);
                     
-                    const scaleX = (val: number) => padding + (val - minX) / rangeX * (width - 2 * padding);
-                    const scaleY = (val: number) => height - padding - (val - minY) / rangeY * (height - 2 * padding);
+                    const scaleX = (val: number) => plotLeft + (val - minX) / (maxX - minX || 1) * plotWidth;
+                    const scaleY = (val: number) => plotTop + plotHeight - (val - minY) / (maxY - minY || 1) * plotHeight;
+                    const clipId = 'regression-chart-clip';
 
                     return (
-                      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-                        {/* Grid Lines */}
-                        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
-                        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.05)" />
+                      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+                        <defs>
+                          <clipPath id={clipId}>
+                            <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} />
+                          </clipPath>
+                        </defs>
+
+                        <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} rx="8" fill="rgba(255,255,255,0.015)" />
+
+                        {xTicks.map((tick) => {
+                          const x = scaleX(tick);
+                          return (
+                            <g key={`x-${tick}`}>
+                              <line x1={x} y1={plotTop} x2={x} y2={plotTop + plotHeight} stroke="rgba(255,255,255,0.045)" />
+                              <text x={x} y={plotTop + plotHeight + 20} fill="rgba(255,255,255,0.35)" fontSize="10" textAnchor="middle">
+                                {formatNumber(tick)}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        {yTicks.map((tick) => {
+                          const y = scaleY(tick);
+                          return (
+                            <g key={`y-${tick}`}>
+                              <line x1={plotLeft} y1={y} x2={plotLeft + plotWidth} y2={y} stroke="rgba(255,255,255,0.045)" />
+                              <text x={plotLeft - 12} y={y + 4} fill="rgba(255,255,255,0.35)" fontSize="10" textAnchor="end">
+                                {formatNumber(tick)}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        <line x1={plotLeft} y1={plotTop} x2={plotLeft} y2={plotTop + plotHeight} stroke="rgba(167,200,255,0.45)" strokeWidth="1.5" />
+                        <line x1={plotLeft} y1={plotTop + plotHeight} x2={plotLeft + plotWidth} y2={plotTop + plotHeight} stroke="rgba(167,200,255,0.45)" strokeWidth="1.5" />
                         
-                        {/* Regression Line */}
-                        {results && (
-                          <line 
-                            x1={scaleX(minX)} y1={scaleY(results.slope * minX + results.intercept)} 
-                            x2={scaleX(maxX)} y2={scaleY(results.slope * maxX + results.intercept)} 
-                            stroke="#76f3ea" strokeWidth="2" strokeDasharray="4"
-                            className="opacity-60"
-                          />
-                        )}
+                        <g clipPath={`url(#${clipId})`}>
+                          {results && (
+                            <line 
+                              x1={scaleX(minX)} y1={scaleY(results.slope * minX + results.intercept)} 
+                              x2={scaleX(maxX)} y2={scaleY(results.slope * maxX + results.intercept)} 
+                              stroke="#76f3ea" strokeWidth="2.5" strokeDasharray="5 5"
+                              className="opacity-70"
+                            />
+                          )}
                         
-                        {/* Data Points */}
-                        {allValid.map((p) => (
-                          <circle 
-                            key={p.originalIndex} 
-                            cx={scaleX(p.x)} 
-                            cy={scaleY(p.y)} 
-                            r="5" 
-                            fill={p.active ? "#a7c8ff" : "rgba(239, 68, 68, 0.2)"}
-                            stroke={p.active ? "none" : "#ef4444"}
-                            strokeWidth={p.active ? "0" : "1"}
-                            onClick={() => togglePointActive(p.originalIndex)}
-                            className={`cursor-pointer transition-all duration-300 hover:r-7 ${
-                              p.active 
-                                ? 'drop-shadow-[0_0_8px_rgba(167,200,255,0.8)]' 
-                                : 'hover:fill-red-500/40'
-                            }`}
-                          />
-                        ))}
+                          {allValid.map((p) => (
+                            <circle 
+                              key={p.originalIndex} 
+                              cx={scaleX(p.x)} 
+                              cy={scaleY(p.y)} 
+                              r="5" 
+                              fill={p.active ? "#a7c8ff" : "rgba(239, 68, 68, 0.2)"}
+                              stroke={p.active ? "#d7e6ff" : "#ef4444"}
+                              strokeWidth={p.active ? "1.5" : "1"}
+                              onClick={() => togglePointActive(p.originalIndex)}
+                              className={`cursor-pointer transition-all duration-300 hover:r-7 ${
+                                p.active 
+                                  ? 'drop-shadow-[0_0_8px_rgba(167,200,255,0.8)]' 
+                                  : 'hover:fill-red-500/40'
+                              }`}
+                            />
+                          ))}
+                        </g>
+
+                        <text x={plotLeft + plotWidth / 2} y={height - 18} fill="rgba(255,255,255,0.62)" fontSize="11" fontWeight="700" textAnchor="middle">
+                          Concentration (X, mol/L)
+                        </text>
+                        <text
+                          x="18"
+                          y={plotTop + plotHeight / 2}
+                          fill="rgba(255,255,255,0.62)"
+                          fontSize="11"
+                          fontWeight="700"
+                          textAnchor="middle"
+                          transform={`rotate(-90 18 ${plotTop + plotHeight / 2})`}
+                        >
+                          Analytical response (Y, absorbance AU)
+                        </text>
                       </svg>
                     );
                   })()}

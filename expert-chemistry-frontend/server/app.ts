@@ -17,11 +17,11 @@ const HEALTH_PATHS = new Set(['/health', '/api/health']);
 
 export function initializeServer() {
   if (!startupPromise) {
-    startupPromise = Promise.all([
-      initializeAuthSchema(),
-      initializeAuditSchema(),
-      initializeReportsSchema()
-    ])
+    startupPromise = initializeAuthSchema()
+      .then(() => Promise.all([
+        initializeAuditSchema(),
+        initializeReportsSchema()
+      ]))
       .then(() => undefined)
       .catch((error) => {
         startupPromise = null;
