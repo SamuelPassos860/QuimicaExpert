@@ -7,6 +7,8 @@ import { openPrintableReport } from '../utils/reportExport';
 
 interface ReportsProps {
   currentUser: AuthUser;
+  initialProjectKey?: string;
+  initialProjectLabel?: string;
 }
 
 function formatDateTime(value: string) {
@@ -48,16 +50,20 @@ function getReportProject(report: StoredReport) {
   return { key, label };
 }
 
+function normalizeProjectKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
 function getReportAnalysis(report: StoredReport) {
   const [, ...analysisParts] = report.compoundName.split(' - ');
   return analysisParts.join(' - ').trim() || report.source || 'Analytical report';
 }
 
-export default function Reports({ currentUser }: ReportsProps) {
+export default function Reports({ currentUser, initialProjectKey, initialProjectLabel }: ReportsProps) {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const [reports, setReports] = useState<StoredReport[]>([]);
-  const [selectedProjectKey, setSelectedProjectKey] = useState('');
+  const [selectedProjectKey, setSelectedProjectKey] = useState(initialProjectKey ?? '');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
@@ -128,6 +134,29 @@ export default function Reports({ currentUser }: ReportsProps) {
     ));
   }, [reports]);
 
+  useEffect(() => {
+    if (!initialProjectKey && !initialProjectLabel) {
+      setSelectedProjectKey('');
+      return;
+    }
+
+    if (projectOptions.length === 0) {
+      setSelectedProjectKey(initialProjectKey ?? '');
+      return;
+    }
+
+    const normalizedInitialKey = initialProjectKey ? normalizeProjectKey(initialProjectKey) : '';
+    const normalizedInitialLabel = initialProjectLabel ? normalizeProjectKey(initialProjectLabel) : '';
+    const matchingProject = projectOptions.find((project) => (
+      project.key === initialProjectKey
+      || normalizeProjectKey(project.key) === normalizedInitialKey
+      || normalizeProjectKey(project.label) === normalizedInitialKey
+      || normalizeProjectKey(project.label) === normalizedInitialLabel
+    ));
+
+    setSelectedProjectKey(matchingProject?.key ?? initialProjectKey ?? '');
+  }, [initialProjectKey, initialProjectLabel, projectOptions]);
+
   const visibleReports = useMemo(() => {
     if (!selectedProjectKey) return [];
 
@@ -152,6 +181,7 @@ export default function Reports({ currentUser }: ReportsProps) {
 
   useEffect(() => {
     if (!selectedProjectKey) return;
+    if (projectOptions.length === 0) return;
     if (!projectOptions.some((project) => project.key === selectedProjectKey)) {
       setSelectedProjectKey('');
     }

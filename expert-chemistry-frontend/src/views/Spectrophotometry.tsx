@@ -62,6 +62,7 @@ interface ReportProjectOption {
 
 interface SpectrophotometryProps {
   currentUser: AuthUser;
+  initialTab?: TabType;
 }
 
 function formatNumber(value: number) {
@@ -153,8 +154,8 @@ function loadReportProjectOptions(currentUser: AuthUser): ReportProjectOption[] 
   }
 }
 
-export default function Spectrophotometry({ currentUser }: SpectrophotometryProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('calculate');
+export default function Spectrophotometry({ currentUser, initialTab = 'calculate' }: SpectrophotometryProps) {
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [query, setQuery] = useState('');
   const [savedQuery, setSavedQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -187,6 +188,10 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [calcMode, setCalcMode] = useState<'absorbance' | 'concentration'>('absorbance');
   const [sampleAbsorbance, setSampleAbsorbance] = useState('0');
   const [blankAbsorbance, setBlankAbsorbance] = useState('0');
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     setReportProjects(loadReportProjectOptions(currentUser));

@@ -19,7 +19,7 @@ import type { AuthUser } from '../types/auth';
 
 interface DashboardProps {
   currentUser: AuthUser;
-  onOpenView: (view: View) => void;
+  onOpenView: (view: View, options?: { spectrophotometryTab?: 'calculate' | 'saved'; reportsProjectKey?: string; reportsProjectLabel?: string }) => void;
 }
 
 interface DashboardSummary {
@@ -136,6 +136,18 @@ function getReportProjectKey(report: DashboardSummary['recentReports'][number]) 
   return report.projectId || normalizedProject || identity.compound;
 }
 
+function getReportsViewProjectKey(report: DashboardSummary['recentReports'][number]) {
+  if (report.projectId || report.projectName) {
+    const label = report.projectName || report.projectId || 'Project';
+    return report.projectId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  const [rawProject] = report.compoundName.split(' - ');
+  const label = rawProject?.trim() || report.compoundName || 'Not identified';
+
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || label;
+}
+
 export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState('all');
@@ -179,10 +191,10 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
   }, []);
 
   const stats = summary ? [
-    { label: 'Saved Compounds', value: formatNumber(summary.stats.savedCompounds), icon: FlaskConical, color: 'text-primary', detail: 'Stored results library' },
-    { label: 'Generated Reports', value: formatNumber(summary.stats.generatedReports ?? 0), icon: BarChart3, color: 'text-secondary', detail: 'Decision records' },
-    { label: 'Registered Users', value: formatNumber(summary.stats.registeredUsers), icon: Users, color: 'text-blue-400', detail: 'Platform accounts' },
-    { label: 'Spectral Records', value: formatNumber(summary.stats.spectralRecords), icon: Waves, color: 'text-green-400', detail: 'Analytical source dataset' }
+    { label: 'Saved Compounds', value: formatNumber(summary.stats.savedCompounds), icon: FlaskConical, color: 'text-primary', detail: 'Stored results library', onClick: () => onOpenView('spectrophotometry', { spectrophotometryTab: 'saved' }) },
+    { label: 'Generated Reports', value: formatNumber(summary.stats.generatedReports ?? 0), icon: BarChart3, color: 'text-secondary', detail: 'Decision records', onClick: () => onOpenView('reports') },
+    { label: 'Registered Users', value: formatNumber(summary.stats.registeredUsers), icon: Users, color: 'text-blue-400', detail: 'Platform accounts', onClick: () => onOpenView('user-management') },
+    { label: 'Spectral Records', value: formatNumber(summary.stats.spectralRecords), icon: Waves, color: 'text-green-400', detail: 'Analytical source dataset', onClick: () => onOpenView('spectrophotometry') }
   ] : [];
   const recentReports = summary?.recentReports ?? [];
   const userResultBreakdown = summary?.userResultBreakdown ?? [];
@@ -193,6 +205,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
     const groups = new Map<string, {
       key: string;
       name: string;
+      reportsProjectKey: string;
       reports: DashboardSummary['recentReports'];
       avgAbsorbance: number;
       latestAt: string;
@@ -210,6 +223,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
       groups.set(key, {
         key,
         name: identity.compound,
+        reportsProjectKey: getReportsViewProjectKey(report),
         reports: nextReports,
         avgAbsorbance: nextReports.reduce((sum, item) => sum + item.absorbance, 0) / nextReports.length,
         latestAt
@@ -223,6 +237,9 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
   const filteredRecentReports = selectedProjectKey === 'all'
     ? recentReports
     : recentReports.filter((report) => getReportProjectKey(report) === selectedProjectKey);
+  const selectedProjectGroup = selectedProjectKey === 'all'
+    ? null
+    : projectGroups.find((project) => project.key === selectedProjectKey) ?? null;
   const latestReport = filteredRecentReports[0] ?? null;
   const latestReportIdentity = latestReport ? getReportIdentity(latestReport) : null;
   const recentReportsChronological = [...filteredRecentReports].reverse();
@@ -271,12 +288,14 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
             {stats.map((stat, index) => (
-              <motion.div
+              <motion.button
                 key={stat.label}
+                type="button"
+                onClick={stat.onClick}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.08 }}
-                className="glass-panel glass-panel-hover p-6 group rounded-2xl"
+                className={`glass-panel glass-panel-hover p-6 group rounded-2xl text-left ${stat.onClick ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 <div className="flex items-center justify-between mb-6">
                   <div className={`p-3 rounded-xl bg-white/[0.03] border border-white/5 transition-all group-hover:scale-110 group-hover:border-white/10 ${stat.color}`}>
@@ -291,7 +310,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                   <p className="text-white/40 text-xs font-mono uppercase tracking-widest">{stat.label}</p>
                   <p className="text-3xl font-display font-bold text-white group-hover:glow-text transition-all">{stat.value}</p>
                 </div>
-              </motion.div>
+              </motion.button>
             ))}
           </div>
 
@@ -306,13 +325,6 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                   Recent analytical outputs, responsible users, and comparative signals for faster operational decisions.
                 </p>
               </div>
-              <button
-                onClick={() => onOpenView('reports')}
-                className="inline-flex items-center justify-center gap-2 text-[10px] font-mono text-white/35 hover:text-primary transition-all uppercase tracking-[0.2em] hover:bg-white/5 px-3 py-2 rounded-lg border border-white/8"
-              >
-                Open Reports
-                <ArrowRight size={14} />
-              </button>
             </div>
 
             {projectGroups.length > 0 && (
@@ -496,7 +508,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                       </div>
                     </div>
                     <button
-                      onClick={() => onOpenView('reports')}
+                      onClick={() => onOpenView('reports', selectedProjectGroup ? { reportsProjectKey: selectedProjectGroup.reportsProjectKey, reportsProjectLabel: selectedProjectGroup.name } : undefined)}
                       className="w-full rounded-xl bg-primary text-on-primary px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_26px_rgba(167,200,255,0.22)] transition-all flex items-center justify-center gap-2"
                     >
                       Open Reports
@@ -509,50 +521,8 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 xl:col-span-4 gap-6">
-                <div className="glass-panel rounded-2xl p-5 sm:p-6 border-white/[0.03]">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
-                      <FolderOpen size={20} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-white/30">Project Compare</p>
-                      <p className="text-white font-semibold mt-1">Recent result groups</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {projectGroups.length ? projectGroups.map((project) => (
-                      <button
-                        key={project.key}
-                        type="button"
-                        onClick={() => setSelectedProjectKey(project.key)}
-                        className={`w-full text-left rounded-xl border p-4 transition-all ${
-                          selectedProjectKey === project.key
-                            ? 'bg-secondary/10 border-secondary/35'
-                            : 'bg-white/[0.025] border-white/8 hover:bg-white/[0.045]'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-white font-medium truncate">{project.name}</p>
-                            <p className="text-[10px] font-mono uppercase tracking-widest text-white/30 mt-1">Last {formatDateShort(project.latestAt)}</p>
-                          </div>
-                          <span className="text-sm font-mono text-primary">{project.reports.length}</span>
-                        </div>
-                        <div className="mt-3 h-2 rounded-full bg-white/[0.04] overflow-hidden">
-                          <div className="h-full rounded-full bg-secondary/75" style={{ width: `${Math.max(8, (project.reports.length / Math.max(1, recentReports.length)) * 100)}%` }} />
-                        </div>
-                        <p className="mt-2 text-[10px] text-white/35 font-mono">Avg A {formatDecimal(project.avgAbsorbance)}</p>
-                      </button>
-                    )) : (
-                      <p className="text-sm text-white/35">No project results available yet.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="glass-panel rounded-2xl p-5 border-white/[0.03]">
+            <div className="hidden">
+                <div className="hidden">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
                       <Gauge size={20} />
@@ -612,40 +582,36 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6">
               <div className="glass-panel rounded-2xl p-5 sm:p-6 border-white/[0.03]">
-                <div className="flex items-center justify-between gap-4 mb-5">
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-primary font-bold">User Contribution</p>
-                    <h3 className="text-white font-display font-bold mt-2">Results by analyst</h3>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
+                    <Gauge size={20} />
                   </div>
-                  <Users size={20} className="text-white/25" />
+                  <div>
+                    <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-white/30">Decision Signal</p>
+                    <p className="text-white font-semibold mt-1">Highest selected response</p>
+                  </div>
                 </div>
-                <div className="space-y-4">
-                  {userResultBreakdown.length ? userResultBreakdown.map((user) => (
-                    <div key={user.userId} className="rounded-xl bg-white/[0.025] border border-white/8 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-white font-medium truncate">{user.fullName}</p>
-                          <p className="text-[10px] font-mono uppercase tracking-widest text-white/30 mt-1">@{user.userId}</p>
-                        </div>
-                        <span className="text-sm font-mono text-primary">{user.reports}</span>
-                      </div>
-                      <div className="mt-3 h-2 rounded-full bg-white/[0.04] overflow-hidden">
-                        <div className="h-full rounded-full bg-primary/75" style={{ width: `${Math.max(8, (user.reports / maxUserReports) * 100)}%` }} />
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono text-white/35">
-                        <span>Avg A {formatDecimal(user.avgAbsorbance)}</span>
-                        <span className="text-right">Last {formatDateShort(user.lastGeneratedAt)}</span>
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="rounded-xl bg-white/[0.02] border border-dashed border-white/10 p-6 text-sm text-white/35">
-                      No generated report activity yet.
-                    </div>
-                  )}
+
+                <p className="text-4xl font-display font-bold text-white mt-6">
+                  {highestRecentReport ? formatDecimal(highestRecentReport.absorbance) : '---'}
+                  <span className="text-sm font-mono text-white/40 ml-2">AU</span>
+                </p>
+                <p className="text-sm text-white/45 mt-2 break-words">
+                  {highestRecentReport ? `${getReportIdentity(highestRecentReport).compound} - ${getReportIdentity(highestRecentReport).analysis}` : 'No recent reports available.'}
+                </p>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-white/[0.03] border border-white/8 px-3 py-3">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">Selected Avg A</p>
+                    <p className="text-white font-semibold mt-1">{formatDecimal(avgRecentAbsorbance)}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/[0.03] border border-white/8 px-3 py-3">
+                    <p className="text-white/30 font-mono uppercase tracking-widest">Latest User</p>
+                    <p className="text-white font-semibold mt-1 truncate">{latestReport?.generatedByUserId ?? 'N/A'}</p>
+                  </div>
                 </div>
               </div>
 
@@ -693,15 +659,15 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
             </div>
           </section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-6 lg:gap-8">
-            <section className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:gap-8">
+            <section className="hidden">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <h2 className="text-xl font-display font-bold text-white tracking-tight">Saved Library Snapshot</h2>
                   <span className="px-2 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] font-mono font-bold border border-secondary/20">COMPOUNDS</span>
                 </div>
                 <button
-                  onClick={() => onOpenView('spectrophotometry')}
+                  onClick={() => onOpenView('spectrophotometry', { spectrophotometryTab: 'saved' })}
                   className="inline-flex items-center gap-2 text-[10px] font-mono text-white/30 hover:text-primary transition-all uppercase tracking-[0.2em] hover:bg-white/5 px-3 py-1.5 rounded-lg border border-transparent hover:border-white/5"
                 >
                   Open Workflow
@@ -789,7 +755,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
               </div>
 
               {currentUser.role === 'admin' && (
-                <div className="glass-panel p-6 sm:p-8 space-y-4 border-white/[0.03] rounded-2xl">
+                <div className="hidden">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-2xl bg-green-500/10 text-green-300 border border-green-400/20">
                       <ShieldCheck size={20} />
