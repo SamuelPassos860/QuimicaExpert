@@ -15,6 +15,7 @@ import type { UserRole } from '../types/auth';
 interface LayoutProps {
   children: React.ReactNode;
   activeView: View;
+  contentKey: string;
   onViewChange: (view: View) => void;
   onLogout: () => void;
   user: {
@@ -25,7 +26,7 @@ interface LayoutProps {
   };
 }
 
-export default function Layout({ children, activeView, onViewChange, onLogout, user }: LayoutProps) {
+export default function Layout({ children, activeView, contentKey, onViewChange, onLogout, user }: LayoutProps) {
   const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const initials = user.name
     .split(' ')
@@ -47,6 +48,9 @@ export default function Layout({ children, activeView, onViewChange, onLogout, u
 
   const handleViewChange = (view: View) => {
     onViewChange(view);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
@@ -224,7 +228,7 @@ export default function Layout({ children, activeView, onViewChange, onLogout, u
         <main className="px-3 sm:px-4 lg:px-10 py-6 sm:py-8 lg:py-10 min-h-[calc(100vh-120px)] relative z-10">
           <AnimatePresence mode="wait">
             <motion.div
-              key={activeView}
+              key={contentKey}
               initial={{ opacity: 0, y: 20, filter: 'blur(10px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}

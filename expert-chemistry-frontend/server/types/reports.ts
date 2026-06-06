@@ -1,6 +1,8 @@
 export interface ReportRow {
   id: number;
   report_id: string;
+  project_id: string | null;
+  project_name: string | null;
   owner_user_id: number;
   owner_user_identifier: string;
   owner_full_name: string;
@@ -19,6 +21,8 @@ export interface ReportRow {
 
 export interface CreateReportBody {
   reportId?: string;
+  projectId?: string;
+  projectName?: string;
   compoundName?: string;
   casId?: string;
   lambdaMax?: string;
@@ -35,6 +39,8 @@ export interface CreateReportBody {
 
 export interface CreateReportInput {
   reportId: string;
+  projectId: string;
+  projectName: string;
   ownerUserId: number;
   ownerUserIdentifier: string;
   ownerFullName: string;

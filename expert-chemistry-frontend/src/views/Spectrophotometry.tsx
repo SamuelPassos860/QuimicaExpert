@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, FlaskConical, Search, Sparkles, Sigma, Trash2, Waves } from 'lucide-react';
+import { Download, FlaskConical, FolderOpen, Search, Sparkles, Sigma, Trash2, Waves } from 'lucide-react';
 import type { ReportExportAuditPayload } from '../types/audit';
 import type { AuthUser } from '../types/auth';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
@@ -53,8 +53,16 @@ interface ApiSpectralRecord {
   absorption_solvent: string | null;
 }
 
+interface ReportProjectOption {
+  id: string;
+  name: string;
+  matrix: string;
+  wavelength: string;
+}
+
 interface SpectrophotometryProps {
   currentUser: AuthUser;
+  initialTab?: TabType;
 }
 
 function formatNumber(value: number) {
@@ -116,8 +124,38 @@ function getSpectralSortPriority(value: string) {
   return 2;
 }
 
-export default function Spectrophotometry({ currentUser }: SpectrophotometryProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('calculate');
+function loadReportProjectOptions(currentUser: AuthUser): ReportProjectOption[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const storedValue = window.localStorage.getItem(`quimicaexpert:methods:v1:${currentUser.id}`);
+    if (!storedValue) return [];
+
+    const parsedValue = JSON.parse(storedValue) as unknown;
+    const projectsValue = parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue) && 'projects' in parsedValue
+      ? (parsedValue as { projects?: unknown }).projects
+      : parsedValue;
+
+    if (!Array.isArray(projectsValue)) return [];
+
+    return projectsValue
+      .filter((project): project is Record<string, unknown> => Boolean(project) && typeof project === 'object' && !Array.isArray(project))
+      .map((project) => ({
+        id: typeof project.id === 'string' ? project.id : '',
+        name: typeof project.compound === 'string' ? project.compound : '',
+        matrix: typeof project.matrix === 'string' ? project.matrix : 'N/A',
+        wavelength: typeof project.wavelength === 'string' ? project.wavelength : 'N/A'
+      }))
+      .filter((project) => project.id && project.name)
+      .sort((left, right) => left.name.localeCompare(right.name));
+  } catch (error) {
+    console.warn('Failed to load report project options:', error);
+    return [];
+  }
+}
+
+export default function Spectrophotometry({ currentUser, initialTab = 'calculate' }: SpectrophotometryProps) {
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [query, setQuery] = useState('');
   const [savedQuery, setSavedQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -135,6 +173,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteCas, setPendingDeleteCas] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SavedCompoundRecord | null>(null);
+  const [reportProjects, setReportProjects] = useState<ReportProjectOption[]>(() => loadReportProjectOptions(currentUser));
+  const [selectedReportProjectId, setSelectedReportProjectId] = useState('');
   const reportSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [compoundName, setCompoundName] = useState('');
@@ -145,6 +185,18 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const [source, setSource] = useState<SourceType>('Manual');
   const [pathLength, setPathLength] = useState('1');
   const [concentration, setConcentration] = useState('0');
+  const [calcMode, setCalcMode] = useState<'absorbance' | 'concentration'>('absorbance');
+  const [sampleAbsorbance, setSampleAbsorbance] = useState('0');
+  const [blankAbsorbance, setBlankAbsorbance] = useState('0');
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    setReportProjects(loadReportProjectOptions(currentUser));
+    setSelectedReportProjectId('');
+  }, [currentUser.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -299,10 +351,28 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   const epsilonValue = Number.parseFloat(epsilon) || 0;
   const pathLengthValue = Number.parseFloat(pathLength) || 0;
   const concentrationValue = Number.parseFloat(concentration) || 0;
-  const absorbance = epsilonValue * pathLengthValue * concentrationValue;
+  const sampleAbsValue = Number.parseFloat(sampleAbsorbance) || 0;
+  const blankAbsValue = Number.parseFloat(blankAbsorbance) || 0;
+
+  // Lógica da Lei de Beer-Lambert
+  const effectiveAbsorbance = calcMode === 'absorbance' 
+    ? epsilonValue * pathLengthValue * concentrationValue 
+    : sampleAbsValue - blankAbsValue;
+
+  const calculatedConcentration = (calcMode === 'concentration' && epsilonValue * pathLengthValue !== 0)
+    ? effectiveAbsorbance / (epsilonValue * pathLengthValue)
+    : concentrationValue;
+
+  const absorbance = effectiveAbsorbance;
+  const formulaPreview = calcMode === 'absorbance'
+    ? `${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)} x ${formatNumber(concentrationValue)}`
+    : `(${formatNumber(sampleAbsValue)} - ${formatNumber(blankAbsValue)}) / (${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)})`;
+
   const hasSelectedCompound = compoundName.trim().length > 0;
-  const hasCalculationInputs = pathLengthValue > 0 && concentrationValue > 0;
-  const formulaPreview = `${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)} x ${formatNumber(concentrationValue)}`;
+  const selectedReportProject = reportProjects.find((project) => project.id === selectedReportProjectId) ?? null;
+  const hasCalculationInputs = calcMode === 'absorbance' 
+    ? (pathLengthValue > 0 && concentrationValue > 0)
+    : (pathLengthValue > 0 && sampleAbsValue > 0);
 
   const applySpectralRecord = (record: SpectralRecord) => {
     setSelectedSpectralRecordId(record.id);
@@ -338,10 +408,14 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         source,
         epsilonValue,
         pathLengthValue,
-        concentrationValue,
-        absorbance
+        concentrationValue: calcMode === 'concentration' ? calculatedConcentration : concentrationValue,
+        absorbance: effectiveAbsorbance
       },
-      overrides
+      {
+        projectId: selectedReportProject?.id,
+        projectName: selectedReportProject?.name,
+        ...overrides
+      }
     );
 
   const resetManualEntry = () => {
@@ -381,7 +455,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
           solvent: solvent.trim() || 'N/A',
           fonte: source,
           path_length_cm: pathLengthValue,
-          concentration_mol_l: concentrationValue,
+          concentration_mol_l: calcMode === 'concentration' ? calculatedConcentration : concentrationValue,
           absorbance
         })
       });
@@ -435,6 +509,12 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   };
 
   const exportReportPdf = async (payload = createCurrentReportPayload(), options?: { skipSnapshotSave?: boolean }) => {
+    if (!payload.projectId && !payload.projectName) {
+      window.alert('Choose the project where this result should be placed before generating the report.');
+      reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     if (!options?.skipSnapshotSave) {
       try {
         await saveReportSnapshot(payload);
@@ -541,7 +621,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
   ) : null;
 
   return (
-    <div className="space-y-8 sm:space-y-10">
+    <div className="max-w-[1600px] mx-auto space-y-8 sm:space-y-10">
       {deleteModal && createPortal(deleteModal, document.body)}
 
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
@@ -571,7 +651,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="relative z-10 flex flex-wrap gap-3">
         <button
           onClick={() => setActiveTab('calculate')}
           className={`px-5 py-3 rounded-xl border text-[10px] font-mono uppercase tracking-[0.25em] transition-all ${
@@ -595,8 +675,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
       </div>
 
       {activeTab === 'calculate' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8">
-          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.55fr] gap-6 lg:gap-8">
+          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8 flex flex-col h-full">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className={`rounded-2xl border p-4 ${hasSelectedCompound ? 'border-primary/30 bg-primary/10' : 'border-white/8 bg-white/[0.03]'}`}>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">Step 1</p>
@@ -661,21 +741,21 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[950px] overflow-auto custom-scrollbar pr-0 sm:pr-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pr-0 sm:pr-2 flex-1 min-h-[750px] xl:max-h-[1800px] content-start">
               {isLoadingSpectral && (
-                <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   Loading spectral data...
                 </div>
               )}
 
               {!isLoadingSpectral && spectralError && (
-                <div className="lg:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+                <div className="md:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
                   {spectralError}
                 </div>
               )}
 
               {!isLoadingSpectral && !spectralError && spectralLibrary.length === 0 && (
-                <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   No spectral records found for this search.
                 </div>
               )}
@@ -693,9 +773,10 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <p
-                        className={`font-semibold break-words leading-relaxed transition-colors ${
+                        className={`font-semibold truncate transition-colors ${
                           selectedSpectralRecordId === record.id ? 'text-primary' : 'text-white group-hover:text-primary'
                         }`}
+                        title={record.name}
                       >
                         {record.name}
                       </p>
@@ -713,16 +794,16 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                       {record.source}
                     </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">epsilon</p>
                       <p className="text-white mt-1 font-semibold">{formatNumber(record.epsilon)}</p>
                     </div>
-                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0">
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 min-w-0">
                       <p className="text-white/30 font-mono uppercase tracking-widest">lambda max</p>
                       <p className="text-white mt-1 font-semibold leading-relaxed break-words">{formatWavelengthMax(record.lambdaMax)}</p>
                     </div>
-                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-3 min-w-0 sm:col-span-2">
+                    <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4 min-w-0 sm:col-span-2">
                       <p className="text-white/30 font-mono uppercase tracking-widest">solvent</p>
                       <p className="text-white mt-1 font-semibold leading-relaxed break-words">{record.solvent}</p>
                     </div>
@@ -747,6 +828,25 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                     Calculate absorbance
                   </h2>
                 </div>
+              </div>
+
+              <div className="flex p-1 rounded-xl bg-white/[0.03] border border-white/10 mb-6">
+                <button
+                  onClick={() => setCalcMode('absorbance')}
+                  className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                    calcMode === 'absorbance' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  Find Absorbance
+                </button>
+                <button
+                  onClick={() => setCalcMode('concentration')}
+                  className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                    calcMode === 'concentration' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  Find Concentration
+                </button>
               </div>
 
               <div className="space-y-5">
@@ -791,17 +891,43 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                     className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
                   />
                 </label>
-                <label className="space-y-2 block">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Concentration (mol/L)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={concentration}
-                    onChange={(event) => setConcentration(event.target.value)}
-                    className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                  />
-                </label>
+
+                {calcMode === 'absorbance' ? (
+                  <label className="space-y-2 block">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Concentration (mol/L)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={concentration}
+                      onChange={(event) => setConcentration(event.target.value)}
+                      className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                    />
+                  </label>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="space-y-2 block">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Sample Absorbance</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={sampleAbsorbance}
+                        onChange={(event) => setSampleAbsorbance(event.target.value)}
+                        className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                      />
+                    </label>
+                    <label className="space-y-2 block">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Blank (Baseline)</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={blankAbsorbance}
+                        onChange={(event) => setBlankAbsorbance(event.target.value)}
+                        className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="mt-8 rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
@@ -811,10 +937,10 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                       Result
                     </p>
                     <p className="text-4xl font-display font-bold text-white mt-2">
-                      {formatNumber(absorbance)}
+                      {calcMode === 'absorbance' ? formatNumber(effectiveAbsorbance) : formatNumber(calculatedConcentration)}
                     </p>
                     <p className="text-sm text-white/45 mt-2">
-                      Calculated with <span className="text-white/80">A = epsilon x l x c</span>
+                      {calcMode === 'absorbance' ? 'Target: Absorbance (A)' : 'Target: Concentration (c)'}
                     </p>
                   </div>
                   <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
@@ -824,8 +950,15 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
 
                 <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
                   <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">Live Formula Preview</p>
-                  <p className="text-white font-semibold mt-3 break-words">A = {formulaPreview}</p>
-                  <p className="text-sm text-white/55 mt-2">A = {formatNumber(absorbance)}</p>
+                  {calcMode === 'absorbance' ? (
+                    <p className="text-white font-semibold mt-3 break-words">
+                      A = {formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)} × {formatNumber(concentrationValue)} = {formatNumber(effectiveAbsorbance)}
+                    </p>
+                  ) : (
+                    <p className="text-white font-semibold mt-3 break-words">
+                      c = ({formatNumber(sampleAbsValue)} - {formatNumber(blankAbsValue)}) / ({formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)}) = {formatNumber(calculatedConcentration)} mol/L
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -868,7 +1001,35 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 </button>
               </div>
 
+              <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
+                <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-white/30 font-bold">
+                  <FolderOpen size={14} className="text-primary" />
+                  Project destination
+                </label>
+                <select
+                  value={selectedReportProjectId}
+                  onChange={(event) => setSelectedReportProjectId(event.target.value)}
+                  className="mt-3 w-full rounded-xl bg-[#101827] border border-white/10 px-4 py-3 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-[#131f34]"
+                >
+                  <option value="">Choose where this result will be placed</option>
+                  {reportProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} - {project.id}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-white/40">
+                  {selectedReportProject
+                    ? `${selectedReportProject.matrix} - ${selectedReportProject.wavelength}`
+                    : 'Projects are loaded automatically from the project library as new ones are created.'}
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
+                  <p className="text-white/30 font-mono uppercase tracking-widest">Project</p>
+                  <p className="text-white mt-2 font-semibold">{selectedReportProject?.name || 'Not selected'}</p>
+                </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Generated by</p>
                   <p className="text-white mt-2 font-semibold">{currentUser.fullName}</p>
@@ -876,8 +1037,8 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Formula</p>
-                  <p className="text-white mt-2 font-semibold break-words">A = {formulaPreview}</p>
-                  <p className="text-xs text-white/45 mt-2">A = {formatNumber(absorbance)}</p>
+                  <p className="text-white mt-2 font-semibold break-words">{calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
+                  <p className="text-xs text-white/45 mt-2">{calcMode === 'absorbance' ? 'A =' : 'c ='} {calcMode === 'absorbance' ? formatNumber(absorbance) : `${formatNumber(calculatedConcentration)} mol/L`}</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
                   <p className="text-white/30 font-mono uppercase tracking-widest">Compound</p>
@@ -904,13 +1065,14 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
               <div className="rounded-[1.5rem] bg-[#08101f] border border-white/8 p-5 font-mono text-sm text-white/80">
                 <p>--- FINAL REPORT ---</p>
                 <p className="mt-3">Generated by: {currentUser.fullName} ({currentUser.userId})</p>
-                <p>Formula: A = {formulaPreview}</p>
+                <p>Formula: {calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
+                <p>Project: {selectedReportProject?.name || 'Not selected'}</p>
                 <p className="mt-3">Compound: {compoundName || 'Not identified'}</p>
                 <p>Epsilon: {formatNumber(epsilonValue)} M^-1 cm^-1</p>
                 <p>Lambda max: {formatWavelengthMax(lambdaMax)}</p>
                 <p>Solvent: {solvent || 'N/A'}</p>
                 <p>Source: {source}</p>
-                <p>Absorbance: {formatNumber(absorbance)}</p>
+                <p>{calcMode === 'absorbance' ? 'Absorbance:' : 'Concentration:'} {calcMode === 'absorbance' ? formatNumber(absorbance) : `${formatNumber(calculatedConcentration)} mol/L`}</p>
               </div>
 
               <div className="flex items-start gap-3 rounded-2xl bg-white/[0.02] border border-white/8 p-4">
@@ -924,7 +1086,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
           </section>
         </div>
       ) : (
-        <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
+        <section className="glass-panel -mt-6 rounded-[2rem] p-5 pt-11 sm:p-6 sm:pt-12 lg:p-8 lg:pt-14 border-white/[0.03] space-y-8">
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
@@ -950,21 +1112,21 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
             </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {isLoadingSaved && (
-              <div className="xl:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+              <div className="md:col-span-2 lg:col-span-3 2xl:col-span-5 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                 Loading saved compounds...
               </div>
             )}
 
             {!isLoadingSaved && savedError && (
-              <div className="xl:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+              <div className="md:col-span-2 lg:col-span-3 2xl:col-span-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
                 {savedError}
               </div>
             )}
 
             {!isLoadingSaved && !savedError && savedCompounds.length === 0 && (
-              <div className="xl:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+              <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                 No saved compounds found.
               </div>
             )}
@@ -972,11 +1134,11 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
             {!isLoadingSaved && !savedError && savedCompounds.map((compound) => (
               <div
                 key={compound.id}
-                className="rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
+                className="w-full rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 hover:border-primary/20 transition-all"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                  <div>
-                    <p className="text-white text-lg font-semibold">{compound.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-semibold truncate" title={compound.name}>{compound.name}</p>
                     <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                       CAS {compound.cas}
                     </p>
@@ -984,7 +1146,7 @@ export default function Spectrophotometry({ currentUser }: SpectrophotometryProp
                       Saved {compound.savedAt ? formatDateTime(compound.savedAt) : 'recently'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                     <span className="px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] text-[9px] font-mono uppercase tracking-[0.18em] text-secondary font-bold">
                       {compound.source}
                     </span>

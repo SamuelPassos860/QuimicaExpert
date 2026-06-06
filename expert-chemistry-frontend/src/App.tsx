@@ -1,19 +1,36 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import { View } from './constants';
 import type { AuthUser } from './types/auth';
 
-import Dashboard from './views/Dashboard';
-import Equipment from './views/Equipment';
-import Reports from './views/Reports';
-import Clients from './views/Clients';
-import Methods from './views/Methods';
-import Settings from './views/Settings';
-import FileUpload from './views/FileUpload';
-import Spectrophotometry from './views/Spectrophotometry';
 import AuthView from './views/Auth';
-import UserManagement from './views/UserManagement';
-import AuditLogs from './views/AuditLogs';
+
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const Equipment = lazy(() => import('./views/Equipment'));
+const Reports = lazy(() => import('./views/Reports'));
+const Clients = lazy(() => import('./views/Clients'));
+const Methods = lazy(() => import('./views/Methods'));
+const Settings = lazy(() => import('./views/Settings'));
+const FileUpload = lazy(() => import('./views/FileUpload'));
+const Spectrophotometry = lazy(() => import('./views/Spectrophotometry'));
+const UserManagement = lazy(() => import('./views/UserManagement'));
+const AuditLogs = lazy(() => import('./views/AuditLogs'));
+
+type SpectrophotometryTab = 'calculate' | 'saved';
+type ViewOptions = {
+  spectrophotometryTab?: SpectrophotometryTab;
+  reportsProjectKey?: string;
+  reportsProjectLabel?: string;
+};
+
+function ViewLoadingFallback() {
+  return (
+    <div className="glass-panel rounded-[28px] px-8 py-6 text-center border-white/10">
+      <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">Loading View</p>
+      <p className="mt-3 text-white/70">Preparing the selected workspace...</p>
+    </div>
+  );
+}
 
 function normalizeAuthUser(value: unknown): AuthUser | null {
   if (!value || typeof value !== 'object') {
@@ -43,6 +60,10 @@ function normalizeAuthUser(value: unknown): AuthUser | null {
 
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
+  const [viewResetKey, setViewResetKey] = useState(0);
+  const [spectrophotometryInitialTab, setSpectrophotometryInitialTab] = useState<SpectrophotometryTab | undefined>();
+  const [reportsInitialProjectKey, setReportsInitialProjectKey] = useState<string | undefined>();
+  const [reportsInitialProjectLabel, setReportsInitialProjectLabel] = useState<string | undefined>();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
@@ -98,6 +119,9 @@ export default function App() {
 
     setCurrentUser(normalizedUser);
     setActiveView('dashboard');
+    setSpectrophotometryInitialTab(undefined);
+    setReportsInitialProjectKey(undefined);
+    setReportsInitialProjectLabel(undefined);
   };
 
   const handleLogout = async () => {
@@ -111,22 +135,45 @@ export default function App() {
     } finally {
       setCurrentUser(null);
       setActiveView('dashboard');
+      setSpectrophotometryInitialTab(undefined);
+      setReportsInitialProjectKey(undefined);
+      setReportsInitialProjectLabel(undefined);
     }
+  };
+
+  const handleViewChange = (view: View) => {
+    setSpectrophotometryInitialTab(undefined);
+    setReportsInitialProjectKey(undefined);
+    setReportsInitialProjectLabel(undefined);
+    setActiveView((currentView) => {
+      if (currentView === view) {
+        setViewResetKey((currentKey) => currentKey + 1);
+      }
+
+      return view;
+    });
+  };
+
+  const handleOpenView = (view: View, options?: ViewOptions) => {
+    setSpectrophotometryInitialTab(options?.spectrophotometryTab);
+    setReportsInitialProjectKey(options?.reportsProjectKey);
+    setReportsInitialProjectLabel(options?.reportsProjectLabel);
+    setActiveView(view);
   };
 
   const renderView = (user: AuthUser) => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard currentUser={user} onOpenView={setActiveView} />;
-      case 'spectrophotometry': return <Spectrophotometry currentUser={user} />;
+      case 'dashboard': return <Dashboard currentUser={user} onOpenView={handleOpenView} />;
+      case 'spectrophotometry': return <Spectrophotometry currentUser={user} initialTab={spectrophotometryInitialTab} />;
       case 'equipment': return <Equipment />;
-      case 'reports': return <Reports currentUser={user} />;
+      case 'reports': return <Reports currentUser={user} initialProjectKey={reportsInitialProjectKey} initialProjectLabel={reportsInitialProjectLabel} />;
       case 'clients': return <Clients />;
-      case 'methods': return <Methods />;
+      case 'methods': return <Methods currentUser={user} />;
       case 'settings': return <Settings />;
       case 'upload': return <FileUpload />;
       case 'user-management': return <UserManagement currentUser={user} />;
       case 'audit-logs': return <AuditLogs />;
-      default: return <Dashboard currentUser={user} onOpenView={setActiveView} />;
+      default: return <Dashboard currentUser={user} onOpenView={handleOpenView} />;
     }
   };
 
@@ -148,7 +195,8 @@ export default function App() {
   return (
     <Layout
       activeView={activeView}
-      onViewChange={setActiveView}
+      contentKey={`${activeView}:${viewResetKey}`}
+      onViewChange={handleViewChange}
       onLogout={handleLogout}
       user={{
         name: currentUser.fullName,
@@ -156,7 +204,9 @@ export default function App() {
         userRole: currentUser.role
       }}
     >
-      {renderView(currentUser)}
+      <Suspense fallback={<ViewLoadingFallback />}>
+        {renderView(currentUser)}
+      </Suspense>
     </Layout>
   );
 }

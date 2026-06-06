@@ -90,6 +90,8 @@ export function openPrintableReport(payload: ReportPayload) {
   const formulaExpression = `A = ${formatNumber(payload.epsilonValue)} x ${formatNumber(payload.pathLengthValue)} x ${formatNumber(payload.concentrationValue)}`;
   const formulaResult = `A = ${formatNumber(payload.absorbance)}`;
   const safeCompoundName = escapeHtml(payload.compoundName);
+  const safeProjectName = escapeHtml(payload.projectName || 'N/A');
+  const safeProjectId = escapeHtml(payload.projectId || 'N/A');
   const safeCasId = escapeHtml(payload.casId);
   const safeLambdaMax = escapeHtml(formatWavelengthMax(payload.lambdaMax));
   const safeSolvent = escapeHtml(payload.solvent || 'N/A');
@@ -496,25 +498,44 @@ export function openPrintableReport(payload: ReportPayload) {
           }
           @page {
             size: A4 portrait;
-            margin: 0;
+            margin: 10mm;
           }
           @media print {
             html, body {
-              width: 210mm;
-              height: 297mm;
+              width: auto;
+              height: auto;
               background: #ffffff;
-              overflow: hidden;
+              overflow: visible;
+            }
+            body {
+              margin: 0;
             }
             .page {
               margin: 0;
-              width: 233.34mm;
-              min-height: 330mm;
+              width: auto;
+              min-height: auto;
               max-width: none;
               box-shadow: none;
-              padding: 20px 22px 18px;
-              overflow: hidden;
-              transform: scale(0.9);
-              transform-origin: top left;
+              padding: 0;
+              overflow: visible;
+              transform: none;
+            }
+            .topbar,
+            .summary-card,
+            .content-grid > div,
+            .details-card,
+            .parameter-card,
+            .source-card,
+            .result-panel,
+            .calc-list,
+            .result-box,
+            .formula-box,
+            .integrity,
+            .integrity-note,
+            .signature,
+            .footer {
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
             .divider {
               margin: 14px 0 24px;
@@ -664,6 +685,10 @@ export function openPrintableReport(payload: ReportPayload) {
                 <p class="mini-label">Methodology</p>
                 <p class="mini-value alt">${safeMethodology}</p>
               </div>
+              <div>
+                <p class="mini-label">Project</p>
+                <p class="mini-value">${safeProjectName}</p>
+              </div>
             </div>
           </section>
 
@@ -682,6 +707,10 @@ export function openPrintableReport(payload: ReportPayload) {
                 <div class="details-cell full">
                   <p class="mini-label">CAS Number</p>
                   <p class="mini-value">${safeCasId}</p>
+                </div>
+                <div class="details-cell full">
+                  <p class="mini-label">Project ID</p>
+                  <p class="mini-value">${safeProjectId}</p>
                 </div>
                 <div class="details-cell full">
                   <p class="mini-label">Analysis Solvent</p>

@@ -5,6 +5,35 @@ import { getSearchTerm } from '../utils/http.js';
 
 const router = Router();
 
+function normalizeReportGeneratedAt(value: string | undefined) {
+  const rawValue = value?.trim();
+  if (!rawValue) return new Date().toISOString();
+
+  const directDate = new Date(rawValue);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate.toISOString();
+  }
+
+  const brazilianDateMatch = rawValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (brazilianDateMatch) {
+    const [, day, month, year, hour, minute, second = '0'] = brazilianDateMatch;
+    const parsedDate = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate.toISOString();
+    }
+  }
+
+  return new Date().toISOString();
+}
+
 router.get('/', async (request, response) => {
   const currentUser = response.locals.currentUser;
 
@@ -39,6 +68,8 @@ router.post('/', async (request, response) => {
   try {
     const report = await createReport({
       reportId: body.reportId.trim(),
+      projectId: body.projectId?.trim() || '',
+      projectName: body.projectName?.trim() || '',
       ownerUserId: currentUser.id,
       ownerUserIdentifier: currentUser.userId,
       ownerFullName: currentUser.fullName,
@@ -51,7 +82,7 @@ router.post('/', async (request, response) => {
       pathLengthValue: Number(body.pathLengthValue ?? 0),
       concentrationValue: Number(body.concentrationValue ?? 0),
       absorbance: Number(body.absorbance ?? 0),
-      generatedAt: body.generatedAt?.trim() || new Date().toISOString()
+      generatedAt: normalizeReportGeneratedAt(body.generatedAt)
     });
 
     response.status(201).json({ report });

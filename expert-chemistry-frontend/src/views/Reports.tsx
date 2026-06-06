@@ -1,5 +1,5 @@
-import { useDeferredValue, useEffect, useState } from 'react';
-import { Download, Eye, FileText, Search } from 'lucide-react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { Download, Eye, FileText, FolderOpen, Search } from 'lucide-react';
 import type { ReportExportAuditPayload } from '../types/audit';
 import type { AuthUser } from '../types/auth';
 import type { StoredReport } from '../types/reports';
@@ -7,6 +7,8 @@ import { openPrintableReport } from '../utils/reportExport';
 
 interface ReportsProps {
   currentUser: AuthUser;
+  initialProjectKey?: string;
+  initialProjectLabel?: string;
 }
 
 function formatDateTime(value: string) {
@@ -31,10 +33,37 @@ function formatWavelengthMax(value: string) {
     : `${trimmed} nanometers (nm)`;
 }
 
-export default function Reports({ currentUser }: ReportsProps) {
+function getReportProject(report: StoredReport) {
+  if (report.projectId || report.projectName) {
+    const label = report.projectName || report.projectId || 'Project';
+    return {
+      key: report.projectId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+      label
+    };
+  }
+
+  const [rawProject] = report.compoundName.split(' - ');
+  const label = rawProject?.trim() || report.compoundName || 'Not identified';
+  const normalizedLabel = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const key = report.casId && report.casId !== 'N/A' ? report.casId : normalizedLabel || label;
+
+  return { key, label };
+}
+
+function normalizeProjectKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function getReportAnalysis(report: StoredReport) {
+  const [, ...analysisParts] = report.compoundName.split(' - ');
+  return analysisParts.join(' - ').trim() || report.source || 'Analytical report';
+}
+
+export default function Reports({ currentUser, initialProjectKey, initialProjectLabel }: ReportsProps) {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const [reports, setReports] = useState<StoredReport[]>([]);
+  const [selectedProjectKey, setSelectedProjectKey] = useState(initialProjectKey ?? '');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
@@ -47,13 +76,7 @@ export default function Reports({ currentUser }: ReportsProps) {
       setError(null);
 
       try {
-        const params = new URLSearchParams();
-        if (deferredQuery.trim()) {
-          params.set('search', deferredQuery.trim());
-        }
-
-        const url = params.size > 0 ? `/api/reports?${params.toString()}` : '/api/reports';
-        const response = await fetch(url, {
+        const response = await fetch('/api/reports', {
           credentials: 'include',
           signal: controller.signal
         });
@@ -79,7 +102,90 @@ export default function Reports({ currentUser }: ReportsProps) {
     void loadReports();
 
     return () => controller.abort();
-  }, [deferredQuery]);
+  }, []);
+
+  const projectOptions = useMemo(() => {
+    const projects = new Map<string, { key: string; label: string; reports: number; lastReportAt: string }>();
+
+    reports.forEach((report) => {
+      const project = getReportProject(report);
+      const current = projects.get(project.key);
+
+      if (!current) {
+        projects.set(project.key, {
+          ...project,
+          reports: 1,
+          lastReportAt: report.createdAt
+        });
+        return;
+      }
+
+      projects.set(project.key, {
+        ...current,
+        reports: current.reports + 1,
+        lastReportAt: new Date(report.createdAt) > new Date(current.lastReportAt)
+          ? report.createdAt
+          : current.lastReportAt
+      });
+    });
+
+    return Array.from(projects.values()).sort((left, right) => (
+      new Date(right.lastReportAt).getTime() - new Date(left.lastReportAt).getTime()
+    ));
+  }, [reports]);
+
+  useEffect(() => {
+    if (!initialProjectKey && !initialProjectLabel) {
+      setSelectedProjectKey('');
+      return;
+    }
+
+    if (projectOptions.length === 0) {
+      setSelectedProjectKey(initialProjectKey ?? '');
+      return;
+    }
+
+    const normalizedInitialKey = initialProjectKey ? normalizeProjectKey(initialProjectKey) : '';
+    const normalizedInitialLabel = initialProjectLabel ? normalizeProjectKey(initialProjectLabel) : '';
+    const matchingProject = projectOptions.find((project) => (
+      project.key === initialProjectKey
+      || normalizeProjectKey(project.key) === normalizedInitialKey
+      || normalizeProjectKey(project.label) === normalizedInitialKey
+      || normalizeProjectKey(project.label) === normalizedInitialLabel
+    ));
+
+    setSelectedProjectKey(matchingProject?.key ?? initialProjectKey ?? '');
+  }, [initialProjectKey, initialProjectLabel, projectOptions]);
+
+  const visibleReports = useMemo(() => {
+    if (!selectedProjectKey) return [];
+
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
+
+    return reports.filter((report) => {
+      const project = getReportProject(report);
+      if (project.key !== selectedProjectKey) return false;
+      if (!normalizedQuery) return true;
+
+      return [
+        report.reportId,
+        report.compoundName,
+        report.casId,
+        report.source,
+        report.generatedByName,
+        report.generatedByUserId,
+        getReportAnalysis(report)
+      ].some((value) => value.toLowerCase().includes(normalizedQuery));
+    });
+  }, [deferredQuery, reports, selectedProjectKey]);
+
+  useEffect(() => {
+    if (!selectedProjectKey) return;
+    if (projectOptions.length === 0) return;
+    if (!projectOptions.some((project) => project.key === selectedProjectKey)) {
+      setSelectedProjectKey('');
+    }
+  }, [projectOptions, selectedProjectKey]);
 
   const logReportExport = async (payload: ReportExportAuditPayload) => {
     try {
@@ -127,16 +233,63 @@ export default function Reports({ currentUser }: ReportsProps) {
           </p>
         </div>
 
-        <div className="relative group w-full xl:w-[420px]">
-          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-primary transition-colors" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by report ID, compound, or CAS..."
-            className="w-full rounded-2xl bg-white/[0.03] border border-white/10 pl-12 pr-4 py-4 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-white/[0.06]"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] gap-3 w-full xl:w-[720px]">
+          <div className="relative group">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-primary transition-colors" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search inside selected project..."
+              className="w-full rounded-2xl bg-white/[0.03] border border-white/10 pl-12 pr-4 py-4 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-white/[0.06]"
+            />
+          </div>
+
+          <select
+            value={selectedProjectKey}
+            onChange={(event) => setSelectedProjectKey(event.target.value)}
+            className="w-full rounded-2xl bg-[#101827] border border-white/10 px-4 py-4 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-[#131f34]"
+          >
+            <option value="">Select a project</option>
+            {projectOptions.map((project) => (
+              <option key={project.key} value={project.key}>
+                {project.label} ({project.reports})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+
+      {!isLoading && !error && projectOptions.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {projectOptions.map((project) => {
+            const isSelected = selectedProjectKey === project.key;
+
+            return (
+              <button
+                key={project.key}
+                type="button"
+                onClick={() => setSelectedProjectKey(project.key)}
+                className={`text-left rounded-2xl border p-4 transition-all ${
+                  isSelected
+                    ? 'bg-primary/10 border-primary/40 shadow-[0_0_0_1px_rgba(20,184,166,0.16)]'
+                    : 'bg-white/[0.025] border-white/8 hover:bg-white/[0.045] hover:border-white/15'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className={`p-2.5 rounded-xl ${isSelected ? 'bg-primary/15 text-primary' : 'bg-white/[0.04] text-white/45'}`}>
+                    <FolderOpen size={18} />
+                  </div>
+                  <span className="text-[10px] font-mono text-white/35 uppercase tracking-widest">
+                    {project.reports} reports
+                  </span>
+                </div>
+                <p className="mt-4 text-white font-semibold truncate">{project.label}</p>
+                <p className="mt-1 text-xs text-white/35">Last result {formatDateTime(project.lastReportAt)}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {isLoading && (
@@ -153,12 +306,26 @@ export default function Reports({ currentUser }: ReportsProps) {
 
         {!isLoading && !error && reports.length === 0 && (
           <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
-            No saved reports found for this search.
+            No completed project reports found yet.
           </div>
         )}
 
-        {!isLoading && !error && reports.map((report) => {
+        {!isLoading && !error && reports.length > 0 && !selectedProjectKey && (
+          <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
+            Select a project above to open its generated results.
+          </div>
+        )}
+
+        {!isLoading && !error && selectedProjectKey && visibleReports.length === 0 && (
+          <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
+            No reports found inside this project for the current search.
+          </div>
+        )}
+
+        {!isLoading && !error && visibleReports.map((report) => {
           const isActive = activeReportId === report.id;
+          const project = getReportProject(report);
+          const analysis = getReportAnalysis(report);
 
           return (
             <div
@@ -199,12 +366,13 @@ export default function Reports({ currentUser }: ReportsProps) {
                 <div>
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="text-xl font-display font-bold text-white group-hover:text-primary transition-colors leading-tight">
-                      {report.compoundName}
+                      {project.label}
                     </h3>
                     <span className="text-[9px] px-3 py-1 rounded-full font-bold uppercase tracking-widest border text-green-400 bg-green-400/5 border-green-400/20">
                       Saved Snapshot
                     </span>
                   </div>
+                  <p className="text-white/55 mt-2 text-sm font-semibold">{analysis}</p>
                   <div className="flex flex-wrap items-center gap-3 mt-3 text-xs">
                     <span className="text-white/45">CAS {report.casId}</span>
                     <span className="w-1 h-1 rounded-full bg-white/10" />
