@@ -8,6 +8,7 @@ import {
   FlaskConical,
   FolderOpen,
   Gauge,
+  Search,
   ShieldCheck,
   TrendingUp,
   UserRoundPlus,
@@ -51,6 +52,7 @@ interface DashboardSummary {
     projectId?: string;
     projectName?: string;
     compoundName: string;
+    casId?: string;
     source: string;
     absorbance: number;
     concentrationValue: number;
@@ -133,7 +135,7 @@ function getReportProjectKey(report: DashboardSummary['recentReports'][number]) 
   const identity = getReportIdentity(report);
   const normalizedProject = identity.compound.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-  return report.projectId || normalizedProject || identity.compound;
+  return report.projectId || (report.casId && report.casId !== 'N/A' ? report.casId : normalizedProject || identity.compound);
 }
 
 function getReportsViewProjectKey(report: DashboardSummary['recentReports'][number]) {
@@ -145,12 +147,15 @@ function getReportsViewProjectKey(report: DashboardSummary['recentReports'][numb
   const [rawProject] = report.compoundName.split(' - ');
   const label = rawProject?.trim() || report.compoundName || 'Not identified';
 
-  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || label;
+  return report.casId && report.casId !== 'N/A'
+    ? report.casId
+    : label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || label;
 }
 
 export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState('all');
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -237,6 +242,10 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
   const filteredRecentReports = selectedProjectKey === 'all'
     ? recentReports
     : recentReports.filter((report) => getReportProjectKey(report) === selectedProjectKey);
+  const normalizedProjectSearch = projectSearchQuery.trim().toLowerCase();
+  const visibleProjectGroups = normalizedProjectSearch
+    ? projectGroups.filter((project) => project.name.toLowerCase().includes(normalizedProjectSearch))
+    : projectGroups;
   const selectedProjectGroup = selectedProjectKey === 'all'
     ? null
     : projectGroups.find((project) => project.key === selectedProjectKey) ?? null;
@@ -328,57 +337,76 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
             </div>
 
             {projectGroups.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setSelectedProjectKey('all')}
-                  className={`text-left rounded-2xl border p-4 transition-all ${
-                    selectedProjectKey === 'all'
-                      ? 'bg-primary/10 border-primary/40'
-                      : 'bg-white/[0.025] border-white/8 hover:bg-white/[0.045] hover:border-white/15'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className={`p-2.5 rounded-xl ${selectedProjectKey === 'all' ? 'bg-primary/15 text-primary' : 'bg-white/[0.04] text-white/45'}`}>
-                      <FolderOpen size={18} />
-                    </div>
-                    <span className="text-[10px] font-mono text-white/35 uppercase tracking-widest">{recentReports.length} reports</span>
-                  </div>
-                  <p className="mt-4 text-white font-semibold truncate">All projects</p>
-                  <p className="mt-1 text-xs text-white/35">Combined recent results</p>
-                </button>
+              <div className="space-y-3">
+                <div className="relative max-w-md">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+                  <input
+                    type="search"
+                    value={projectSearchQuery}
+                    onChange={(event) => setProjectSearchQuery(event.target.value)}
+                    placeholder="Search folders"
+                    className="w-full rounded-xl border border-white/8 bg-white/[0.025] py-2.5 pl-10 pr-4 text-sm text-white outline-none transition-all placeholder:text-white/25 focus:border-primary/40 focus:bg-white/[0.04]"
+                  />
+                </div>
 
-                {projectGroups.map((project) => {
-                  const isSelected = selectedProjectKey === project.key;
-
-                  return (
-                    <button
-                      key={project.key}
-                      type="button"
-                      onClick={() => setSelectedProjectKey(project.key)}
-                      className={`text-left rounded-2xl border p-4 transition-all ${
-                        isSelected
-                          ? 'bg-secondary/10 border-secondary/40'
-                          : 'bg-white/[0.025] border-white/8 hover:bg-white/[0.045] hover:border-white/15'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className={`p-2.5 rounded-xl ${isSelected ? 'bg-secondary/15 text-secondary' : 'bg-white/[0.04] text-white/45'}`}>
-                          <FolderOpen size={18} />
-                        </div>
-                        <span className="text-[10px] font-mono text-white/35 uppercase tracking-widest">{project.reports.length} reports</span>
+                <div className="grid grid-flow-col auto-cols-[minmax(220px,260px)] sm:auto-cols-[minmax(240px,280px)] gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProjectKey('all')}
+                    className={`text-left rounded-2xl border p-4 transition-all ${
+                      selectedProjectKey === 'all'
+                        ? 'bg-primary/10 border-primary/40'
+                        : 'bg-white/[0.025] border-white/8 hover:bg-white/[0.045] hover:border-white/15'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className={`p-2.5 rounded-xl ${selectedProjectKey === 'all' ? 'bg-primary/15 text-primary' : 'bg-white/[0.04] text-white/45'}`}>
+                        <FolderOpen size={18} />
                       </div>
-                      <p className="mt-4 text-white font-semibold truncate">{project.name}</p>
-                      <p className="mt-1 text-xs text-white/35">Avg A {formatDecimal(project.avgAbsorbance)} - {formatDateShort(project.latestAt)}</p>
-                    </button>
-                  );
-                })}
+                      <span className="text-[10px] font-mono text-white/35 uppercase tracking-widest">{recentReports.length} reports</span>
+                    </div>
+                    <p className="mt-4 text-white font-semibold truncate">All projects</p>
+                    <p className="mt-1 text-xs text-white/35">Combined recent results</p>
+                  </button>
+
+                  {visibleProjectGroups.map((project) => {
+                    const isSelected = selectedProjectKey === project.key;
+
+                    return (
+                      <button
+                        key={project.key}
+                        type="button"
+                        onClick={() => setSelectedProjectKey(project.key)}
+                        className={`text-left rounded-2xl border p-4 transition-all ${
+                          isSelected
+                            ? 'bg-secondary/10 border-secondary/40'
+                            : 'bg-white/[0.025] border-white/8 hover:bg-white/[0.045] hover:border-white/15'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className={`p-2.5 rounded-xl ${isSelected ? 'bg-secondary/15 text-secondary' : 'bg-white/[0.04] text-white/45'}`}>
+                            <FolderOpen size={18} />
+                          </div>
+                          <span className="text-[10px] font-mono text-white/35 uppercase tracking-widest">{project.reports.length} reports</span>
+                        </div>
+                        <p className="mt-4 text-white font-semibold truncate">{project.name}</p>
+                        <p className="mt-1 text-xs text-white/35">Avg A {formatDecimal(project.avgAbsorbance)} - {formatDateShort(project.latestAt)}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {!visibleProjectGroups.length && (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm text-white/35">
+                    No folders match this search.
+                  </div>
+                )}
               </div>
             )}
 
-            <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
-              <div className="glass-panel rounded-2xl p-5 sm:p-6 border-white/[0.03]">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-5 items-start">
+              <div className="glass-panel rounded-2xl p-4 sm:p-5 border-white/[0.03]">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-primary font-bold">Analytical Trend</p>
                     <h3 className="text-white font-display font-bold mt-2">Recent completed results by project</h3>
@@ -389,7 +417,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                 </div>
 
                 {recentReportsChronological.length ? (
-                  <div className="rounded-2xl bg-[#08101f]/55 border border-white/5 p-4 overflow-hidden">
+                  <div className="rounded-2xl bg-[#08101f]/55 border border-white/5 p-3 sm:p-4 overflow-hidden">
                     {(() => {
                       const width = 720;
                       const height = 240;
@@ -409,7 +437,7 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                       const polyline = points.map((point) => `${point.x},${point.y}`).join(' ');
 
                       return (
-                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[260px] sm:h-[300px]">
+                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[230px] sm:h-[260px] xl:h-[280px]">
                           <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotHeight} stroke="rgba(255,255,255,0.12)" />
                           <line x1={padding.left} y1={padding.top + plotHeight} x2={padding.left + plotWidth} y2={padding.top + plotHeight} stroke="rgba(255,255,255,0.12)" />
                           {[0, 0.5, 1].map((ratio) => {
@@ -429,7 +457,8 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                           )}
                           {points.map((point, index) => (
                             <g key={point.report.reportId}>
-                              <circle cx={point.x} cy={point.y} r="5.5" fill="#a7c8ff" stroke="#d7e6ff" strokeWidth="1.5" />
+                              <circle cx={point.x} cy={point.y} r="8" fill="rgba(118,243,234,0.16)" />
+                              <circle cx={point.x} cy={point.y} r="5.5" fill="#76f3ea" stroke="#e9fffd" strokeWidth="1.6" filter="drop-shadow(0 0 8px rgba(118,243,234,0.85))" />
                               <text x={point.x} y={point.y - 12} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.68)">
                                 {index + 1}
                               </text>
@@ -441,33 +470,12 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                           <text x={padding.left + plotWidth / 2} y={height - 6} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.48)">
                             Completed report sequence
                           </text>
-                          <text x="16" y={padding.top + plotHeight / 2} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.48)" transform={`rotate(-90 16 ${padding.top + plotHeight / 2})`}>
+                          <text x="10" y={padding.top + plotHeight / 2} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.48)" transform={`rotate(-90 10 ${padding.top + plotHeight / 2})`}>
                             Absorbance (AU)
                           </text>
                         </svg>
                       );
                     })()}
-
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {filteredRecentReports.slice(0, 4).map((report, index) => {
-                        const identity = getReportIdentity(report);
-
-                        return (
-                          <div key={report.reportId} className="rounded-xl bg-white/[0.025] border border-white/8 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-white text-sm font-semibold truncate">{identity.compound}</p>
-                                <p className="text-[10px] text-primary/80 font-mono uppercase tracking-widest mt-1 truncate">{identity.analysis}</p>
-                              </div>
-                              <span className="text-[10px] font-mono text-white/35">#{filteredRecentReports.length - index}</span>
-                            </div>
-                            <p className="text-[10px] text-white/35 mt-3">
-                              A {formatDecimal(report.absorbance)} · c {formatDecimal(report.concentrationValue)} mol/L · {report.generatedByUserId}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
                 ) : (
                   <div className="h-[260px] rounded-2xl bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center text-sm text-white/35">
@@ -476,10 +484,10 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                 )}
               </div>
 
-              <div className="glass-panel rounded-2xl p-5 border-white/[0.03]">
+              <div className="glass-panel rounded-2xl p-4 border-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
-                    <Gauge size={20} />
+                  <div className="p-2.5 rounded-xl bg-secondary/10 text-secondary border border-secondary/20">
+                    <Gauge size={18} />
                   </div>
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-white/30">Latest Analysis</p>
@@ -488,28 +496,28 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
                 </div>
 
                 {latestReport && latestReportIdentity ? (
-                  <div className="mt-5 space-y-4">
+                  <div className="mt-4 space-y-3">
                     <div>
                       <p className="text-[10px] font-mono uppercase tracking-widest text-white/30">Compound</p>
-                      <p className="text-2xl font-display font-bold text-white mt-1 break-words">{latestReportIdentity.compound}</p>
+                      <p className="text-xl font-display font-bold text-white mt-1 break-words">{latestReportIdentity.compound}</p>
                     </div>
-                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4">
+                    <div className="rounded-xl bg-white/[0.03] border border-white/8 p-3">
                       <p className="text-[10px] font-mono uppercase tracking-widest text-primary/80">Analysis / method</p>
                       <p className="text-white font-semibold mt-1 break-words">{latestReportIdentity.analysis}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-white/[0.03] border border-white/8 p-3">
+                      <div className="rounded-xl bg-white/[0.03] border border-white/8 p-2.5">
                         <p className="text-white/30 font-mono uppercase tracking-widest text-[10px]">Absorbance</p>
                         <p className="text-white font-semibold mt-1">{formatDecimal(latestReport.absorbance)}</p>
                       </div>
-                      <div className="rounded-xl bg-white/[0.03] border border-white/8 p-3">
+                      <div className="rounded-xl bg-white/[0.03] border border-white/8 p-2.5">
                         <p className="text-white/30 font-mono uppercase tracking-widest text-[10px]">Concentration</p>
                         <p className="text-white font-semibold mt-1">{formatDecimal(latestReport.concentrationValue)}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => onOpenView('reports', selectedProjectGroup ? { reportsProjectKey: selectedProjectGroup.reportsProjectKey, reportsProjectLabel: selectedProjectGroup.name } : undefined)}
-                      className="w-full rounded-xl bg-primary text-on-primary px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_26px_rgba(167,200,255,0.22)] transition-all flex items-center justify-center gap-2"
+                      className="w-full rounded-xl bg-primary text-on-primary px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_26px_rgba(167,200,255,0.22)] transition-all flex items-center justify-center gap-2"
                     >
                       Open Reports
                       <ArrowRight size={14} />

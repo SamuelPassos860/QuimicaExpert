@@ -179,6 +179,7 @@ export async function getDashboardSummary(currentUser: AuthUser) {
       projectId: row.project_id || undefined,
       projectName: row.project_name || undefined,
       compoundName: row.compound_name,
+      casId: row.cas_id,
       source: row.source,
       absorbance: parseChemicalNumber(row.absorbance),
       concentrationValue: parseChemicalNumber(row.concentration_value),

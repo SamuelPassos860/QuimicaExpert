@@ -210,13 +210,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
               </button>
             </div>
             
-            <div className="hidden sm:block h-8 w-px bg-white/10" />
-            
             <div className="flex items-center gap-3 sm:gap-6">
-              <div className="text-right hidden md:block">
-                <span className="text-[9px] font-mono text-secondary uppercase tracking-[0.2em] block mb-0.5 font-bold">System Status: Live</span>
-                <p className="text-sm font-bold text-white leading-none font-mono">08:42:15</p>
-              </div>
               <button id="logout-btn" title="System Logout" onClick={onLogout} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
                 <LogOut size={20} />
               </button>

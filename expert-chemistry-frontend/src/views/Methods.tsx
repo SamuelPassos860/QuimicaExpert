@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ArrowLeft, Calculator, Copy, Sigma, Waves, Link, Unlink, FileUp, RotateCcw, TrendingUp, Plus, Trash2, CheckCircle2, Circle, Download, Sparkles, FlaskConical, Search } from 'lucide-react';
 import type { AuthUser } from '../types/auth';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
@@ -906,11 +906,13 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [targetWavelength, setTargetWavelength] = useState('');
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
   const [lambertSerialTarget, setLambertSerialTarget] = useState<'sample' | 'blank'>('sample');
+  const [hoveredScanWavelength, setHoveredScanWavelength] = useState<string | null>(null);
   const [isSerialConnected, setIsSerialConnected] = useState(false);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const portRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regressionFileInputRef = useRef<HTMLInputElement>(null);
+  const skipNextSampleScanSyncRef = useRef(false);
 
   // Linear regression states
   const [regressionPoints, setRegressionPoints] = useState<{ x: string, y: string, active: boolean }[]>([]);
@@ -1494,6 +1496,11 @@ export default function Methods({ currentUser }: MethodsProps) {
 
   // Synchronizes sample absorbance based on the selected wavelength from the scan.
   useEffect(() => {
+    if (skipNextSampleScanSyncRef.current) {
+      skipNextSampleScanSyncRef.current = false;
+      return;
+    }
+
     const targetNum = Number.parseFloat(targetWavelength.replace(',', '.'));
     if (isNaN(targetNum)) return;
 
@@ -1524,6 +1531,32 @@ export default function Methods({ currentUser }: MethodsProps) {
   const pathVal = Number.parseFloat(pathLength.toString().replace(',', '.')) || 0;
   const dilVal = Number.parseFloat(dilutionFactor.toString().replace(',', '.')) || 1;
   const inputConcVal = Number.parseFloat(inputConcentration.toString().replace(',', '.')) || 0;
+  const scanPoints = useMemo(() => Object.entries(scanMap)
+    .map(([wavelength, absorbance]) => ({
+      wavelength: Number.parseFloat(wavelength.replace(',', '.')),
+      absorbance: Number.parseFloat(absorbance.replace(',', '.'))
+    }))
+    .filter((point) => Number.isFinite(point.wavelength) && Number.isFinite(point.absorbance))
+    .sort((left, right) => left.wavelength - right.wavelength), [scanMap]);
+
+  const formatScanInputValue = (value: number) => (
+    Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/\.?0+$/, '')
+  );
+
+  const applyLambertScanPoint = (point: { wavelength: number; absorbance: number }) => {
+    const nextWavelength = formatScanInputValue(point.wavelength);
+    const nextAbsorbance = formatScanInputValue(point.absorbance);
+
+    setTargetWavelength(nextWavelength);
+
+    if (calcMode === 'concentration' && lambertSerialTargetRef.current === 'blank') {
+      skipNextSampleScanSyncRef.current = true;
+      setAbsBlank(nextAbsorbance);
+      return;
+    }
+
+    setAbsSample(nextAbsorbance);
+  };
 
   const effectiveAbs = sampleVal - blankVal;
 
@@ -1724,6 +1757,16 @@ export default function Methods({ currentUser }: MethodsProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    const applyImportedAbsorbance = (value: string) => {
+      if (calcMode === 'concentration' && lambertSerialTargetRef.current === 'blank') {
+        skipNextSampleScanSyncRef.current = true;
+        setAbsBlank(value);
+        return;
+      }
+
+      setAbsSample(value);
+    };
+
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
       const { count, map } = processDataStream(text, true); 
@@ -1736,15 +1779,16 @@ export default function Methods({ currentUser }: MethodsProps) {
         );
         
         setTargetWavelength(peak[0]);
-        setAbsSample(peak[1]);
+        applyImportedAbsorbance(peak[1]);
       } else {
         // Fallback: extracts an isolated decimal value that looks like absorbance.
         // Improved to avoid large IDs, for example 2000.
         const numericMatch = text.match(/(?<!\d)[0-2][.,]\d{2,6}(?!\d)/);
-        if (numericMatch) setAbsSample(numericMatch[0].replace(',', '.'));
+        if (numericMatch) applyImportedAbsorbance(numericMatch[0].replace(',', '.'));
       }
     };
     reader.readAsText(file);
+    if (e.target) e.target.value = '';
   };
 
   const handleRegressionFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2457,7 +2501,7 @@ export default function Methods({ currentUser }: MethodsProps) {
         )
       ) : activeTab === 'lambert-beer' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          <section className="glass-panel rounded-[2rem] p-6 sm:p-8 space-y-6">
+          <section className="glass-panel rounded-[2rem] p-6 sm:p-8 flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
@@ -2554,18 +2598,13 @@ export default function Methods({ currentUser }: MethodsProps) {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="order-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {calcMode === 'concentration' ? (
                 <>
                   <label className="block space-y-2">
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Target Wavelength (nm)</span>
                     <div className="relative">
                       <input type="number" step="1" value={targetWavelength} onChange={(e) => setTargetWavelength(e.target.value)} placeholder="Ex: 400" className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
-                  {targetWavelength && Object.keys(scanMap).some(wl => Math.abs(Number.parseFloat(wl.replace(',', '.')) - Number.parseFloat(targetWavelength)) <= 1.0) && (
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-mono text-green-400 bg-green-400/10 px-2 py-1 rounded shadow-[0_0_10px_rgba(74,222,128,0.2)]">
-                      MATCH FOUND
-                    </span>
-                      )}
                     </div>
                   </label>
                   <label className="block space-y-2">
@@ -2596,6 +2635,136 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <input type="number" step="any" min="1" value={dilutionFactor} onChange={(e) => setDilutionFactor(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
             </div>
+
+            {scanPoints.length > 1 && (
+              <div className="order-2 rounded-2xl bg-[#08101f]/70 border border-white/8 p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-widest text-secondary font-bold">Spectral Scan</p>
+                    <p className="text-sm text-white/40 mt-1">
+                      {scanPoints.length} readings imported
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono uppercase tracking-widest text-white/45">
+                    Target: {calcMode === 'concentration' && lambertSerialTarget === 'blank' ? 'Blank A' : 'Sample A'}
+                  </span>
+                </div>
+
+                {(() => {
+                  const width = 720;
+                  const height = 260;
+                  const padding = { top: 22, right: 26, bottom: 48, left: 58 };
+                  const plotWidth = width - padding.left - padding.right;
+                  const plotHeight = height - padding.top - padding.bottom;
+                  const minWavelength = scanPoints[0].wavelength;
+                  const maxWavelength = scanPoints[scanPoints.length - 1].wavelength;
+                  const absorbanceValues = scanPoints.map((point) => point.absorbance);
+                  const minAbsorbance = Math.min(0, ...absorbanceValues);
+                  const maxAbsorbance = Math.max(1, ...absorbanceValues);
+                  const wavelengthRange = maxWavelength - minWavelength || 1;
+                  const absorbanceRange = maxAbsorbance - minAbsorbance || 1;
+                  const scaleX = (value: number) => padding.left + ((value - minWavelength) / wavelengthRange) * plotWidth;
+                  const scaleY = (value: number) => padding.top + plotHeight - ((value - minAbsorbance) / absorbanceRange) * plotHeight;
+                  const chartPoints = scanPoints.map((point) => ({
+                    ...point,
+                    x: scaleX(point.wavelength),
+                    y: scaleY(point.absorbance)
+                  }));
+                  const linePoints = chartPoints.map((point) => `${point.x},${point.y}`).join(' ');
+                  const targetNumber = Number.parseFloat(targetWavelength.replace(',', '.'));
+                  const selectedPoint = Number.isFinite(targetNumber)
+                    ? chartPoints.reduce((closest, point) => (
+                      Math.abs(point.wavelength - targetNumber) < Math.abs(closest.wavelength - targetNumber) ? point : closest
+                    ), chartPoints[0])
+                    : chartPoints[0];
+                  const hoveredPoint = hoveredScanWavelength
+                    ? chartPoints.find((point) => String(point.wavelength) === hoveredScanWavelength) ?? null
+                    : null;
+                  const activePoint = hoveredPoint ?? selectedPoint;
+                  const getNearestPoint = (clientX: number, svgElement: SVGSVGElement) => {
+                    const bounds = svgElement.getBoundingClientRect();
+                    const viewBoxX = ((clientX - bounds.left) / bounds.width) * width;
+
+                    return chartPoints.reduce((closest, point) => (
+                      Math.abs(point.x - viewBoxX) < Math.abs(closest.x - viewBoxX) ? point : closest
+                    ), chartPoints[0]);
+                  };
+
+                  return (
+                    <div className="space-y-3">
+                      <svg
+                        viewBox={`0 0 ${width} ${height}`}
+                        className="w-full h-[240px] sm:h-[280px] cursor-crosshair select-none"
+                        role="img"
+                        aria-label="Imported spectral scan"
+                        onMouseMove={(event) => {
+                          const point = getNearestPoint(event.clientX, event.currentTarget);
+                          setHoveredScanWavelength(String(point.wavelength));
+                        }}
+                        onMouseLeave={() => setHoveredScanWavelength(null)}
+                        onClick={(event) => {
+                          const point = getNearestPoint(event.clientX, event.currentTarget);
+                          applyLambertScanPoint(point);
+                        }}
+                      >
+                        <rect x="0" y="0" width={width} height={height} rx="18" fill="rgba(255,255,255,0.015)" />
+                        {[0, 0.5, 1].map((ratio) => {
+                          const y = padding.top + plotHeight * ratio;
+                          const value = maxAbsorbance - absorbanceRange * ratio;
+
+                          return (
+                            <g key={ratio}>
+                              <line x1={padding.left} y1={y} x2={padding.left + plotWidth} y2={y} stroke="rgba(255,255,255,0.055)" />
+                              <text x={padding.left - 10} y={y + 4} textAnchor="end" fontSize="12" fill="rgba(255,255,255,0.5)">
+                                {formatScanInputValue(value)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        {[0, 0.5, 1].map((ratio) => {
+                          const x = padding.left + plotWidth * ratio;
+                          const value = minWavelength + wavelengthRange * ratio;
+
+                          return (
+                            <g key={ratio}>
+                              <line x1={x} y1={padding.top} x2={x} y2={padding.top + plotHeight} stroke="rgba(255,255,255,0.035)" />
+                              <text x={x} y={height - 22} textAnchor="middle" fontSize="12" fill="rgba(255,255,255,0.5)">
+                                {formatScanInputValue(value)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotHeight} stroke="rgba(255,255,255,0.14)" />
+                        <line x1={padding.left} y1={padding.top + plotHeight} x2={padding.left + plotWidth} y2={padding.top + plotHeight} stroke="rgba(255,255,255,0.14)" />
+                        <polyline points={linePoints} fill="none" stroke="#76f3ea" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" filter="drop-shadow(0 0 8px rgba(118,243,234,0.35))" />
+                        <line x1={activePoint.x} y1={padding.top} x2={activePoint.x} y2={padding.top + plotHeight} stroke="rgba(167,200,255,0.45)" strokeDasharray="4 5" />
+                        <circle cx={activePoint.x} cy={activePoint.y} r="8" fill="rgba(118,243,234,0.16)" />
+                        <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#76f3ea" stroke="#e9fffd" strokeWidth="1.4" filter="drop-shadow(0 0 9px rgba(118,243,234,0.8))" />
+                        <text x={padding.left + plotWidth / 2} y={height - 6} textAnchor="middle" fontSize="12" fill="rgba(255,255,255,0.55)">
+                          Wavelength (nm)
+                        </text>
+                        <text x="16" y={padding.top + plotHeight / 2} textAnchor="middle" fontSize="12" fill="rgba(255,255,255,0.55)" transform={`rotate(-90 16 ${padding.top + plotHeight / 2})`}>
+                          Absorbance (AU)
+                        </text>
+                      </svg>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => applyLambertScanPoint(activePoint)}
+                          className="rounded-xl bg-primary text-on-primary px-3 py-3 font-mono uppercase tracking-[0.18em] font-bold transition-all hover:shadow-[0_0_20px_rgba(167,200,255,0.2)]"
+                        >
+                          Use Point
+                        </button>
+                        <div className="rounded-xl bg-white/[0.03] border border-white/8 px-3 py-3 font-mono text-white/70">
+                          <span className="text-white/35">λ</span> {formatScanInputValue(activePoint.wavelength)} nm · <span className="text-white/35">A</span> {formatScanInputValue(activePoint.absorbance)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </section>
 
           <section className="space-y-6">
@@ -2616,7 +2785,13 @@ export default function Methods({ currentUser }: MethodsProps) {
                 {calcMode === 'concentration' && (
                 <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
                   <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Effective Absorbance (A)</p>
-                  <p className="text-white font-mono">{sampleVal} - {blankVal} = <span className="text-primary font-bold">{effectiveAbs.toFixed(4)} AU</span></p>
+                  <p className="flex flex-wrap items-center gap-2 text-white font-mono">
+                    <span>{sampleVal.toFixed(4)}</span>
+                    <span className="text-white/45">-</span>
+                    <span>{blankVal.toFixed(4)}</span>
+                    <span className="text-white/45">=</span>
+                    <span className="text-primary font-bold">{effectiveAbs.toFixed(4)} AU</span>
+                  </p>
                 </div>
                 )}
                 <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">

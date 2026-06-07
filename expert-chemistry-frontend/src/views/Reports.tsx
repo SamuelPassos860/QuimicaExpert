@@ -54,6 +54,16 @@ function normalizeProjectKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+function projectMatchesKey(project: { key: string; label: string }, key: string) {
+  const normalizedKey = normalizeProjectKey(key);
+
+  return (
+    project.key === key
+    || normalizeProjectKey(project.key) === normalizedKey
+    || normalizeProjectKey(project.label) === normalizedKey
+  );
+}
+
 function getReportAnalysis(report: StoredReport) {
   const [, ...analysisParts] = report.compoundName.split(' - ');
   return analysisParts.join(' - ').trim() || report.source || 'Analytical report';
@@ -145,12 +155,9 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
       return;
     }
 
-    const normalizedInitialKey = initialProjectKey ? normalizeProjectKey(initialProjectKey) : '';
     const normalizedInitialLabel = initialProjectLabel ? normalizeProjectKey(initialProjectLabel) : '';
     const matchingProject = projectOptions.find((project) => (
-      project.key === initialProjectKey
-      || normalizeProjectKey(project.key) === normalizedInitialKey
-      || normalizeProjectKey(project.label) === normalizedInitialKey
+      (initialProjectKey ? projectMatchesKey(project, initialProjectKey) : false)
       || normalizeProjectKey(project.label) === normalizedInitialLabel
     ));
 
@@ -182,8 +189,14 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
   useEffect(() => {
     if (!selectedProjectKey) return;
     if (projectOptions.length === 0) return;
-    if (!projectOptions.some((project) => project.key === selectedProjectKey)) {
+    const matchingProject = projectOptions.find((project) => projectMatchesKey(project, selectedProjectKey));
+    if (!matchingProject) {
       setSelectedProjectKey('');
+      return;
+    }
+
+    if (matchingProject.key !== selectedProjectKey) {
+      setSelectedProjectKey(matchingProject.key);
     }
   }, [projectOptions, selectedProjectKey]);
 
