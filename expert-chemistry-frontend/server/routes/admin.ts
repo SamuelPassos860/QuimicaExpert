@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { AUDIT_EVENT_TYPES, AUDIT_RESOURCE_TYPES, type AuditLogEventType, type AuditLogResourceType } from '../types/audit.js';
 import { createUser, isDuplicateUserIdError, listUsers, updateUserRole } from '../services/auth.js';
 import { listAuditLogs } from '../services/audit.js';
+import { requireAdmin, requireAdminOrAnalyst } from '../middleware/auth.js';
 import type { AdminCreateUserBody, UserRoleUpdateBody } from '../types/auth.js';
 import { validateAdminCreateUser, validateRoleUpdate } from '../validators/auth.js';
 
 const router = Router();
 
-router.get('/audit-logs', async (request, response) => {
+router.get('/audit-logs', requireAdminOrAnalyst, async (request, response) => {
   const eventType = typeof request.query.eventType === 'string' ? request.query.eventType : undefined;
   const resourceType = typeof request.query.resourceType === 'string' ? request.query.resourceType : undefined;
   const userSearch = typeof request.query.userSearch === 'string' ? request.query.userSearch : '';
@@ -43,7 +44,7 @@ router.get('/audit-logs', async (request, response) => {
   }
 });
 
-router.get('/users', async (_request, response) => {
+router.get('/users', requireAdmin, async (_request, response) => {
   try {
     const users = await listUsers();
     response.json({ users });
@@ -53,7 +54,7 @@ router.get('/users', async (_request, response) => {
   }
 });
 
-router.post('/users', async (request, response) => {
+router.post('/users', requireAdmin, async (request, response) => {
   const validation = validateAdminCreateUser((request.body ?? {}) as AdminCreateUserBody);
 
   if (validation.error) {
@@ -81,7 +82,7 @@ router.post('/users', async (request, response) => {
   }
 });
 
-router.patch('/users/:id/role', async (request, response) => {
+router.patch('/users/:id/role', requireAdmin, async (request, response) => {
   const targetUserId = Number(request.params.id);
   const validation = validateRoleUpdate((request.body ?? {}) as UserRoleUpdateBody);
 

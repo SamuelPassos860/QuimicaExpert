@@ -87,10 +87,11 @@ export function validateResetPassword(body: ResetPasswordBody) {
 }
 
 export function validateRoleUpdate(body: UserRoleUpdateBody) {
-  const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
+  const rawRole = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
+  const role = rawRole === 'user' ? 'analyst' : rawRole;
 
-  if (role !== 'admin' && role !== 'user') {
-    return { error: 'Role must be either admin or user.' };
+  if (role !== 'admin' && role !== 'analyst') {
+    return { error: 'Role must be either admin or analyst.' };
   }
 
   return {
@@ -107,10 +108,11 @@ export function validateAdminCreateUser(body: AdminCreateUserBody) {
     return { error: signupValidation.error as string };
   }
 
-  const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : 'user';
+  const rawRole = typeof body.role === 'string' ? body.role.trim().toLowerCase() : 'analyst';
+  const role = rawRole === 'user' ? 'analyst' : rawRole;
 
-  if (role !== 'admin' && role !== 'user') {
-    return { error: 'Role must be either admin or user.' };
+  if (role !== 'admin' && role !== 'analyst') {
+    return { error: 'Role must be either admin or analyst.' };
   }
 
   return {

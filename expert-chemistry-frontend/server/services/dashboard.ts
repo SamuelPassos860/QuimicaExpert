@@ -10,7 +10,7 @@ interface DashboardUserRow {
   user_id: string;
   full_name: string;
   created_at: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'analyst';
 }
 
 interface ResultTrendRow {

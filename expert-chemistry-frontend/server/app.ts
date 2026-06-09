@@ -50,12 +50,12 @@ app.use((request, response, next) => {
 
 app.use(['/health', '/api/health'], healthRouter);
 app.use(['/auth', '/api/auth'], authRouter);
-app.use(['/admin', '/api/admin'], requireAuth, requireAdmin, adminRouter);
+app.use(['/admin', '/api/admin'], requireAuth, adminRouter);
 app.use(['/audit', '/api/audit'], requireAuth, auditRouter);
-app.use(['/dashboard', '/api/dashboard'], requireAuth, dashboardRouter);
-app.use(['/compounds', '/api/compounds'], requireAuth, compoundsRouter);
+app.use(['/dashboard', '/api/dashboard'], requireAuth, requireAdmin, dashboardRouter);
+app.use(['/compounds', '/api/compounds'], requireAuth, requireAdmin, compoundsRouter);
 app.use(['/reports', '/api/reports'], requireAuth, reportsRouter);
-app.use(['/spectral-data', '/api/spectral-data'], requireAuth, spectralRouter);
+app.use(['/spectral-data', '/api/spectral-data'], requireAuth, requireAdmin, spectralRouter);
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled API error:', error);

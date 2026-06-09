@@ -40,3 +40,17 @@ export const requireAdmin: RequestHandler = async (_request, response, next) => 
 
   next();
 };
+
+export const requireAdminOrAnalyst: RequestHandler = async (_request, response, next) => {
+  if (!response.locals.currentUser) {
+    response.status(401).json({ error: 'Authentication required.' });
+    return;
+  }
+
+  if (response.locals.currentUser.role !== 'admin' && response.locals.currentUser.role !== 'analyst') {
+    response.status(403).json({ error: 'Authorized role required.' });
+    return;
+  }
+
+  next();
+};

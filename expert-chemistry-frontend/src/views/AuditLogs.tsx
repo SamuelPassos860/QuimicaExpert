@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { ScrollText, ShieldCheck } from 'lucide-react';
 import type { AuditLog, AuditLogEventType, AuditLogFilters } from '../types/audit';
+import { useLanguage } from '../i18n';
 
 const EVENT_TYPE_LABELS: Record<AuditLogEventType, string> = {
   login: 'User Login',
@@ -12,22 +13,136 @@ const EVENT_TYPE_LABELS: Record<AuditLogEventType, string> = {
   pdf_exported: 'PDF Exported'
 };
 
+const AUDIT_TEXT = {
+  en: {
+    title: 'Audit Logs',
+    oversight: 'Administrative Oversight',
+    description: 'Review authentication events, saved compound activity, and spectrophotometry report exports across the platform.',
+    scope: 'Audit Scope',
+    scopeDescription: 'This timeline captures who accessed the platform, who saved or deleted compounds, and who generated spectrophotometry reports.',
+    eventType: 'Event Type',
+    allEvents: 'All events',
+    userSearch: 'User Search',
+    userSearchPlaceholder: 'Search by full name or user ID...',
+    loading: 'Loading audit activity...',
+    empty: 'No audit records matched the current filters.',
+    loadError: 'Unable to load audit logs right now.',
+    generatedAt: 'Generated At',
+    who: 'Who',
+    action: 'Action',
+    target: 'Target',
+    details: 'Details',
+    noMetadata: 'No additional metadata was captured for this event.',
+    systemSession: 'System session',
+    eventLabels: EVENT_TYPE_LABELS,
+    selectLabels: {
+      login: 'Login',
+      logout: 'Logout',
+      password_reset_requested: 'Password reset requested',
+      password_reset_completed: 'Password reset completed',
+      compound_saved: 'Compound saved',
+      compound_deleted: 'Compound deleted',
+      pdf_exported: 'PDF exported'
+    }
+  },
+  pt: {
+    title: 'Trilha de Auditoria',
+    oversight: 'Supervisão Administrativa',
+    description: 'Revise eventos de autenticação, atividades de compostos salvos e exportações de relatórios de espectrofotometria em toda a plataforma.',
+    scope: 'Escopo da Auditoria',
+    scopeDescription: 'Esta linha do tempo captura quem acessou a plataforma, quem salvou ou excluiu compostos e quem gerou relatórios de espectrofotometria.',
+    eventType: 'Tipo de Evento',
+    allEvents: 'Todos os eventos',
+    userSearch: 'Busca de Usuário',
+    userSearchPlaceholder: 'Pesquisar por nome completo ou ID do usuário...',
+    loading: 'Carregando atividade de auditoria...',
+    empty: 'Nenhum registro de auditoria corresponde aos filtros atuais.',
+    loadError: 'Não foi possível carregar a trilha de auditoria agora.',
+    generatedAt: 'Gerado em',
+    who: 'Quem',
+    action: 'Ação',
+    target: 'Alvo',
+    details: 'Detalhes',
+    noMetadata: 'Nenhum metadado adicional foi capturado para este evento.',
+    systemSession: 'Sessão do sistema',
+    eventLabels: {
+      login: 'Login do Usuário',
+      logout: 'Logout do Usuário',
+      password_reset_requested: 'Redefinição de Senha Solicitada',
+      password_reset_completed: 'Redefinição de Senha Concluída',
+      compound_saved: 'Composto Salvo',
+      compound_deleted: 'Composto Excluído',
+      pdf_exported: 'PDF Exportado'
+    },
+    selectLabels: {
+      login: 'Login',
+      logout: 'Logout',
+      password_reset_requested: 'Redefinição de senha solicitada',
+      password_reset_completed: 'Redefinição de senha concluída',
+      compound_saved: 'Composto salvo',
+      compound_deleted: 'Composto excluído',
+      pdf_exported: 'PDF exportado'
+    }
+  },
+  es: {
+    title: 'Registros de Auditoría',
+    oversight: 'Supervisión Administrativa',
+    description: 'Revisa eventos de autenticación, actividad de compuestos guardados y exportaciones de informes de espectrofotometría en toda la plataforma.',
+    scope: 'Alcance de Auditoría',
+    scopeDescription: 'Esta línea de tiempo captura quién accedió a la plataforma, quién guardó o eliminó compuestos y quién generó informes de espectrofotometría.',
+    eventType: 'Tipo de Evento',
+    allEvents: 'Todos los eventos',
+    userSearch: 'Búsqueda de Usuario',
+    userSearchPlaceholder: 'Buscar por nombre completo o ID de usuario...',
+    loading: 'Cargando actividad de auditoría...',
+    empty: 'Ningún registro de auditoría coincide con los filtros actuales.',
+    loadError: 'No se pueden cargar los registros de auditoría en este momento.',
+    generatedAt: 'Generado el',
+    who: 'Quién',
+    action: 'Acción',
+    target: 'Objetivo',
+    details: 'Detalles',
+    noMetadata: 'No se capturaron metadatos adicionales para este evento.',
+    systemSession: 'Sesión del sistema',
+    eventLabels: {
+      login: 'Inicio de Sesión',
+      logout: 'Cierre de Sesión',
+      password_reset_requested: 'Restablecimiento de Contraseña Solicitado',
+      password_reset_completed: 'Restablecimiento de Contraseña Completado',
+      compound_saved: 'Compuesto Guardado',
+      compound_deleted: 'Compuesto Eliminado',
+      pdf_exported: 'PDF Exportado'
+    },
+    selectLabels: {
+      login: 'Inicio de sesión',
+      logout: 'Cierre de sesión',
+      password_reset_requested: 'Restablecimiento solicitado',
+      password_reset_completed: 'Restablecimiento completado',
+      compound_saved: 'Compuesto guardado',
+      compound_deleted: 'Compuesto eliminado',
+      pdf_exported: 'PDF exportado'
+    }
+  }
+};
+
 function formatMetadata(metadata: Record<string, unknown>) {
   const entries = Object.entries(metadata).filter(([, value]) => value !== '' && value !== null && value !== undefined);
   return entries.slice(0, 5);
 }
 
-function getAuditTargetLabel(log: AuditLog) {
+function getAuditTargetLabel(log: AuditLog, fallback: string) {
   const compoundName = typeof log.metadata.compoundName === 'string' ? log.metadata.compoundName : '';
 
   if (compoundName) {
     return compoundName;
   }
 
-  return log.resourceKey || 'System session';
+  return log.resourceKey || fallback;
 }
 
 export default function AuditLogs() {
+  const { language } = useLanguage();
+  const text = AUDIT_TEXT[language];
   const [filters, setFilters] = useState<AuditLogFilters>({
     eventType: '',
     userSearch: ''
@@ -71,7 +186,7 @@ export default function AuditLogs() {
         }
 
         console.error('Failed to load audit logs:', requestError);
-        setError('Unable to load audit logs right now.');
+        setError(text.loadError);
       } finally {
         setIsLoading(false);
       }
@@ -80,7 +195,7 @@ export default function AuditLogs() {
     void loadAuditLogs();
 
     return () => controller.abort();
-  }, [deferredUserSearch, filters.eventType]);
+  }, [deferredUserSearch, filters.eventType, text.loadError]);
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -88,23 +203,23 @@ export default function AuditLogs() {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em] font-bold">
-              Administrative Oversight
+              {text.oversight}
             </span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">
-            Audit Logs
+            {text.title}
           </h1>
           <p className="text-white/40 mt-1 max-w-3xl text-sm leading-relaxed">
-            Review authentication events, saved compound activity, and spectrophotometry report exports across the platform.
+            {text.description}
           </p>
         </div>
 
         <div className="glass-panel px-5 py-4 rounded-2xl border-white/[0.03] w-full xl:max-w-md">
           <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
-            Audit Scope
+            {text.scope}
           </p>
           <p className="text-sm text-white/60 mt-2 leading-relaxed">
-            This timeline captures who accessed the platform, who saved or deleted compounds, and who generated spectrophotometry reports.
+            {text.scopeDescription}
           </p>
         </div>
       </div>
@@ -112,7 +227,7 @@ export default function AuditLogs() {
       <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
           <label className="space-y-2">
-            <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">Event Type</span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.eventType}</span>
             <select
               value={filters.eventType}
               onChange={(event) =>
@@ -123,19 +238,19 @@ export default function AuditLogs() {
               }
               className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
             >
-              <option value="">All events</option>
-              <option value="login">Login</option>
-              <option value="logout">Logout</option>
-              <option value="password_reset_requested">Password reset requested</option>
-              <option value="password_reset_completed">Password reset completed</option>
-              <option value="compound_saved">Compound saved</option>
-              <option value="compound_deleted">Compound deleted</option>
-              <option value="pdf_exported">PDF exported</option>
+              <option value="">{text.allEvents}</option>
+              <option value="login">{text.selectLabels.login}</option>
+              <option value="logout">{text.selectLabels.logout}</option>
+              <option value="password_reset_requested">{text.selectLabels.password_reset_requested}</option>
+              <option value="password_reset_completed">{text.selectLabels.password_reset_completed}</option>
+              <option value="compound_saved">{text.selectLabels.compound_saved}</option>
+              <option value="compound_deleted">{text.selectLabels.compound_deleted}</option>
+              <option value="pdf_exported">{text.selectLabels.pdf_exported}</option>
             </select>
           </label>
 
           <label className="space-y-2">
-            <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">User Search</span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.userSearch}</span>
             <input
               value={filters.userSearch}
               onChange={(event) =>
@@ -144,7 +259,7 @@ export default function AuditLogs() {
                   userSearch: event.target.value
                 }))
               }
-              placeholder="Search by full name or user ID..."
+              placeholder={text.userSearchPlaceholder}
               className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
             />
           </label>
@@ -158,11 +273,11 @@ export default function AuditLogs() {
 
         {isLoading ? (
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
-            Loading audit activity...
+            {text.loading}
           </div>
         ) : logs.length === 0 ? (
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
-            No audit records matched the current filters.
+            {text.empty}
           </div>
         ) : (
           <div className="space-y-4">
@@ -181,7 +296,7 @@ export default function AuditLogs() {
                           <ScrollText size={18} />
                         </div>
                         <div>
-                          <p className="text-white text-lg font-semibold">{EVENT_TYPE_LABELS[log.eventType]}</p>
+                          <p className="text-white text-lg font-semibold">{text.eventLabels[log.eventType]}</p>
                           <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                             {log.resourceType} {log.resourceKey ? `• ${log.resourceKey}` : ''}
                           </p>
@@ -190,24 +305,24 @@ export default function AuditLogs() {
                     </div>
 
                     <div className="rounded-2xl bg-[#08101f]/65 border border-white/8 px-4 py-3 text-right">
-                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">Generated At</p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">{text.generatedAt}</p>
                       <p className="text-white font-semibold mt-2">{new Date(log.createdAt).toLocaleString('pt-BR')}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
-                      <p className="text-white/30 font-mono uppercase tracking-widest">Who</p>
+                      <p className="text-white/30 font-mono uppercase tracking-widest">{text.who}</p>
                       <p className="text-white mt-2 font-semibold">{log.actor.fullName}</p>
                       <p className="text-white/45 mt-2">{log.actor.userId}</p>
                     </div>
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
-                      <p className="text-white/30 font-mono uppercase tracking-widest">Action</p>
-                      <p className="text-white mt-2 font-semibold">{EVENT_TYPE_LABELS[log.eventType]}</p>
+                      <p className="text-white/30 font-mono uppercase tracking-widest">{text.action}</p>
+                      <p className="text-white mt-2 font-semibold">{text.eventLabels[log.eventType]}</p>
                     </div>
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
-                      <p className="text-white/30 font-mono uppercase tracking-widest">Target</p>
-                      <p className="text-white mt-2 font-semibold">{getAuditTargetLabel(log)}</p>
+                      <p className="text-white/30 font-mono uppercase tracking-widest">{text.target}</p>
+                      <p className="text-white mt-2 font-semibold">{getAuditTargetLabel(log, text.systemSession)}</p>
                     </div>
                   </div>
 
@@ -216,7 +331,7 @@ export default function AuditLogs() {
                       <div className="p-2 rounded-xl bg-secondary/10 text-secondary border border-secondary/20">
                         <ShieldCheck size={16} />
                       </div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/35">Details</p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/35">{text.details}</p>
                     </div>
                     {metadataEntries.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
@@ -228,7 +343,7 @@ export default function AuditLogs() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-white/45">No additional metadata was captured for this event.</p>
+                      <p className="text-sm text-white/45">{text.noMetadata}</p>
                     )}
                   </div>
                 </article>

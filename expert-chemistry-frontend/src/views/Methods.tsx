@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ArrowLeft, Calculator, Copy, Sigma, Waves, Link, Unlink, FileUp, RotateCcw, TrendingUp, Plus, Trash2, CheckCircle2, Circle, Download, Sparkles, FlaskConical, Search } from 'lucide-react';
 import type { AuthUser } from '../types/auth';
+import { useLanguage } from '../i18n';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
 type MethodTab = 'lambert-beer' | 'linear-regression';
@@ -35,6 +36,7 @@ interface AnalyticalProject {
 }
 
 const METHODS_STORAGE_VERSION = 1;
+const METHODS_STORAGE_PREFIX = 'quimicaexpert:methods:';
 
 const initialProjectLibrary: AnalyticalProject[] = [
   {
@@ -182,23 +184,60 @@ function normalizeSavedProject(value: unknown): AnalyticalProject | null {
   };
 }
 
-function loadStoredProjects(currentUser: AuthUser) {
-  if (typeof window === 'undefined') return cloneInitialProjects();
+function parseStoredProjects(storedValue: string | null) {
+  if (!storedValue) return [];
 
   try {
-    const storedValue = window.localStorage.getItem(getMethodsStorageKey(currentUser));
-    if (!storedValue) return cloneInitialProjects();
-
     const parsedValue = JSON.parse(storedValue) as unknown;
     const storedProjects = isRecord(parsedValue) ? parsedValue.projects : parsedValue;
 
-    if (!Array.isArray(storedProjects)) return cloneInitialProjects();
+    if (!Array.isArray(storedProjects)) return [];
 
-    const normalizedProjects = storedProjects
+    return storedProjects
       .map(normalizeSavedProject)
       .filter((project): project is AnalyticalProject => project !== null);
+  } catch (error) {
+    console.warn('Failed to parse saved methods:', error);
+    return [];
+  }
+}
 
-    return normalizedProjects.length ? normalizedProjects : cloneInitialProjects();
+function mergeProjectLists(projectLists: AnalyticalProject[][]) {
+  const projectsById = new Map<string, AnalyticalProject>();
+
+  projectLists.flat().forEach((project) => {
+    if (!projectsById.has(project.id)) {
+      projectsById.set(project.id, project);
+    }
+  });
+
+  return Array.from(projectsById.values());
+}
+
+function loadRecoveredProjects(currentUser: AuthUser) {
+  if (typeof window === 'undefined') return cloneInitialProjects();
+
+  try {
+    const currentProjects = parseStoredProjects(window.localStorage.getItem(getMethodsStorageKey(currentUser)));
+    const recoveredProjectLists: AnalyticalProject[][] = [];
+
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+
+      if (!key || !key.startsWith(METHODS_STORAGE_PREFIX) || key === getMethodsStorageKey(currentUser)) {
+        continue;
+      }
+
+      recoveredProjectLists.push(parseStoredProjects(window.localStorage.getItem(key)));
+    }
+
+    const mergedProjects = mergeProjectLists([
+      currentProjects,
+      ...recoveredProjectLists,
+      cloneInitialProjects()
+    ]);
+
+    return mergedProjects.length ? mergedProjects : cloneInitialProjects();
   } catch (error) {
     console.warn('Failed to load saved methods:', error);
     return cloneInitialProjects();
@@ -220,6 +259,10 @@ function storeProjects(currentUser: AuthUser, projects: AnalyticalProject[]) {
   } catch (error) {
     console.warn('Failed to save methods:', error);
   }
+}
+
+function areProjectListsEqual(left: AnalyticalProject[], right: AnalyticalProject[]) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function formatNumber(value: number) {
@@ -851,11 +894,277 @@ interface MethodsProps {
   currentUser: AuthUser;
 }
 
+const METHODS_TEXT = {
+  en: {
+    sop: 'Standard Operating Procedures',
+    title: 'Analytical Projects',
+    description: 'Choose a compound project, add calculation methods, and automate results from equipment readings like absorbance, transmittance and wavelength.',
+    formulaBuilderTitle: 'Formula Method Builder',
+    methodName: 'Method name',
+    calculationType: 'Calculation type',
+    formula: 'Formula',
+    resultUnit: 'Result unit',
+    formulaBuilder: 'Formula Builder',
+    singleVariable: 'Single variable',
+    addVariable: 'Add variable',
+    timeSequence: 'Time sequence',
+    addSequence: 'Add sequence',
+    blankSequence: 'Blank sequence',
+    sequenceHint: 'Prefix, start second, interval and count.',
+    constants: 'Constants',
+    addConstant: 'Add constant',
+    variables: 'Variables',
+    noVariables: 'No variables created yet.',
+    savedConstants: 'Saved constants',
+    noConstants: 'No constants saved yet.',
+    backToProject: 'Back to project',
+    backToProjectList: 'Back to project list',
+    workspace: 'Project Workspace',
+    projectMethods: 'Project Methods',
+    selectOne: 'Select one',
+    deleteMethod: 'Delete method',
+    methodRunner: 'Method Runner',
+    equipmentTarget: 'Equipment reading target',
+    equipmentTargetHint: 'Incoming hardware values fill the selected field.',
+    disconnectEquipment: 'Disconnect Equipment',
+    connectEquipment: 'Connect Serial Equipment',
+    recognizedVariables: 'Recognized variables',
+    noRecognizedVariables: 'No variables found yet.',
+    projectLibrary: 'Project Library',
+    compoundProjects: 'Compound Projects',
+    searchProjects: 'Search compound, matrix or ID',
+    createProject: 'Create Project',
+    newCompound: 'New Compound',
+    compoundName: 'Compound name',
+    purpose: 'Purpose',
+    defaultMethod: 'Default method',
+    resetAll: 'Reset All Fields',
+    importFile: 'Import from file',
+    hardwareTarget: 'Hardware reading target',
+    targetWavelength: 'Target Wavelength (nm)',
+    absorbance: 'Absorbance (A)',
+    blank: 'Blank (Baseline)',
+    targetConcentration: 'Target Conc. (mol/L)',
+    molarCoeff: 'Molar Coeff. (epsilon)',
+    pathLength: 'Path Length (cm)',
+    dilutionFactor: 'Dilution Factor (DF)',
+    spectralScan: 'Spectral Scan',
+    calculationResult: 'Calculation Result',
+    effectiveAbsorbance: 'Effective Absorbance (A)',
+    appliedFormula: 'Applied Formula',
+    wavelength: 'Wavelength',
+    beerLambertMethod: 'Method: Beer-Lambert Law Calculation',
+    analyticalParameters: 'Analytical Parameters:',
+    backToMethod: 'Back to method',
+    regressionCalculator: 'Linear Regression Calculator',
+    calibrationCurve: 'Data Calibration Curve',
+    clearPoints: 'Clear All Points',
+    importPoints: 'Import Points from File',
+    concentrationX: 'Concentration (X - mol/L)',
+    absorbanceY: 'Absorbance (Y - AU)',
+    noDataPoints: 'No data points added',
+    linearModel: 'Linear Calibration Model',
+    leastSquares: 'Least Squares Method',
+    regressionEquation: 'Regression Equation',
+    copyEquation: 'Copy Equation',
+    sensitivity: 'Sensitivity (m)',
+    intercept: 'Intercept (b)',
+    correlation: 'Correlation (R2)',
+    waitingPoints: 'Waiting for data points',
+    sampleQuantification: 'Sample Quantification',
+    sampleAbsorbance: 'Sample absorbance',
+    standardAbsorbance: 'Standard absorbance',
+    standardConcentration: 'Standard concentration',
+    sampleConcentrationUnit: 'Sample concentration unit',
+    blankAbsorbance: 'Blank absorbance',
+    transmittance: 'Transmittance (%)',
+    printMethodReport: 'Print Method Report',
+    createCustomMethod: 'Create Custom Method',
+    noProjects: 'No projects found for this search.'
+  },
+  pt: {
+    sop: 'Procedimentos Operacionais Padrão',
+    title: 'Projetos Analíticos',
+    description: 'Escolha um projeto de composto, adicione métodos de cálculo e automatize resultados a partir de leituras de equipamento como absorbância, transmitância e comprimento de onda.',
+    formulaBuilderTitle: 'Construtor de Método por Fórmula',
+    methodName: 'Nome do método',
+    calculationType: 'Tipo de cálculo',
+    formula: 'Fórmula',
+    resultUnit: 'Unidade do resultado',
+    formulaBuilder: 'Construtor de Fórmula',
+    singleVariable: 'Variável única',
+    addVariable: 'Adicionar variável',
+    timeSequence: 'Sequência temporal',
+    addSequence: 'Adicionar sequência',
+    blankSequence: 'Sequência de branco',
+    sequenceHint: 'Prefixo, segundo inicial, intervalo e quantidade.',
+    constants: 'Constantes',
+    addConstant: 'Adicionar constante',
+    variables: 'Variáveis',
+    noVariables: 'Nenhuma variável criada ainda.',
+    savedConstants: 'Constantes salvas',
+    noConstants: 'Nenhuma constante salva ainda.',
+    backToProject: 'Voltar ao projeto',
+    backToProjectList: 'Voltar à lista de projetos',
+    workspace: 'Área do Projeto',
+    projectMethods: 'Métodos do Projeto',
+    selectOne: 'Selecione um',
+    deleteMethod: 'Excluir método',
+    methodRunner: 'Executor do Método',
+    equipmentTarget: 'Campo da leitura do equipamento',
+    equipmentTargetHint: 'Valores recebidos do hardware preenchem o campo selecionado.',
+    disconnectEquipment: 'Desconectar Equipamento',
+    connectEquipment: 'Conectar Equipamento Serial',
+    recognizedVariables: 'Variáveis reconhecidas',
+    noRecognizedVariables: 'Nenhuma variável encontrada ainda.',
+    projectLibrary: 'Biblioteca de Projetos',
+    compoundProjects: 'Projetos de Compostos',
+    searchProjects: 'Pesquisar composto, matriz ou ID',
+    createProject: 'Criar Projeto',
+    newCompound: 'Novo Composto',
+    compoundName: 'Nome do composto',
+    purpose: 'Objetivo',
+    defaultMethod: 'Método padrão',
+    resetAll: 'Limpar Todos os Campos',
+    importFile: 'Importar arquivo',
+    hardwareTarget: 'Campo da leitura do hardware',
+    targetWavelength: 'Comprimento de Onda Alvo (nm)',
+    absorbance: 'Absorbância (A)',
+    blank: 'Branco (Linha de Base)',
+    targetConcentration: 'Conc. Alvo (mol/L)',
+    molarCoeff: 'Coef. Molar (epsilon)',
+    pathLength: 'Caminho Óptico (cm)',
+    dilutionFactor: 'Fator de Diluição (FD)',
+    spectralScan: 'Varredura Espectral',
+    calculationResult: 'Resultado do Cálculo',
+    effectiveAbsorbance: 'Absorbância Efetiva (A)',
+    appliedFormula: 'Fórmula Aplicada',
+    wavelength: 'Comprimento de onda',
+    beerLambertMethod: 'Método: Cálculo pela Lei de Beer-Lambert',
+    analyticalParameters: 'Parâmetros Analíticos:',
+    backToMethod: 'Voltar ao método',
+    regressionCalculator: 'Calculadora de Regressão Linear',
+    calibrationCurve: 'Curva de Calibração de Dados',
+    clearPoints: 'Limpar Todos os Pontos',
+    importPoints: 'Importar Pontos do Arquivo',
+    concentrationX: 'Concentração (X - mol/L)',
+    absorbanceY: 'Absorbância (Y - AU)',
+    noDataPoints: 'Nenhum ponto adicionado',
+    linearModel: 'Modelo de Calibração Linear',
+    leastSquares: 'Método dos Mínimos Quadrados',
+    regressionEquation: 'Equação de Regressão',
+    copyEquation: 'Copiar Equação',
+    sensitivity: 'Sensibilidade (m)',
+    intercept: 'Intercepto (b)',
+    correlation: 'Correlação (R2)',
+    waitingPoints: 'Aguardando pontos de dados',
+    sampleQuantification: 'Quantificação da Amostra',
+    sampleAbsorbance: 'Absorbância da amostra',
+    standardAbsorbance: 'Absorbância padrão',
+    standardConcentration: 'Concentração padrão',
+    sampleConcentrationUnit: 'Unidade da concentração da amostra',
+    blankAbsorbance: 'Absorbância do branco',
+    transmittance: 'Transmitância (%)',
+    printMethodReport: 'Imprimir Relatório do Método',
+    createCustomMethod: 'Criar Método Personalizado',
+    noProjects: 'Nenhum projeto encontrado para esta busca.'
+  },
+  es: {
+    sop: 'Procedimientos Operativos Estándar',
+    title: 'Proyectos Analíticos',
+    description: 'Elige un proyecto de compuesto, agrega métodos de cálculo y automatiza resultados desde lecturas de equipo como absorbancia, transmitancia y longitud de onda.',
+    formulaBuilderTitle: 'Constructor de Método por Fórmula',
+    methodName: 'Nombre del método',
+    calculationType: 'Tipo de cálculo',
+    formula: 'Fórmula',
+    resultUnit: 'Unidad del resultado',
+    formulaBuilder: 'Constructor de Fórmula',
+    singleVariable: 'Variable única',
+    addVariable: 'Agregar variable',
+    timeSequence: 'Secuencia temporal',
+    addSequence: 'Agregar secuencia',
+    blankSequence: 'Secuencia de blanco',
+    sequenceHint: 'Prefijo, segundo inicial, intervalo y cantidad.',
+    constants: 'Constantes',
+    addConstant: 'Agregar constante',
+    variables: 'Variables',
+    noVariables: 'Aún no hay variables creadas.',
+    savedConstants: 'Constantes guardadas',
+    noConstants: 'Aún no hay constantes guardadas.',
+    backToProject: 'Volver al proyecto',
+    backToProjectList: 'Volver a la lista de proyectos',
+    workspace: 'Área del Proyecto',
+    projectMethods: 'Métodos del Proyecto',
+    selectOne: 'Selecciona uno',
+    deleteMethod: 'Eliminar método',
+    methodRunner: 'Ejecutor del Método',
+    equipmentTarget: 'Campo de lectura del equipo',
+    equipmentTargetHint: 'Los valores recibidos del hardware llenan el campo seleccionado.',
+    disconnectEquipment: 'Desconectar Equipo',
+    connectEquipment: 'Conectar Equipo Serial',
+    recognizedVariables: 'Variables reconocidas',
+    noRecognizedVariables: 'Aún no se encontraron variables.',
+    projectLibrary: 'Biblioteca de Proyectos',
+    compoundProjects: 'Proyectos de Compuestos',
+    searchProjects: 'Buscar compuesto, matriz o ID',
+    createProject: 'Crear Proyecto',
+    newCompound: 'Nuevo Compuesto',
+    compoundName: 'Nombre del compuesto',
+    purpose: 'Objetivo',
+    defaultMethod: 'Método predeterminado',
+    resetAll: 'Limpiar Todos los Campos',
+    importFile: 'Importar archivo',
+    hardwareTarget: 'Campo de lectura del hardware',
+    targetWavelength: 'Longitud de Onda Objetivo (nm)',
+    absorbance: 'Absorbancia (A)',
+    blank: 'Blanco (Línea Base)',
+    targetConcentration: 'Conc. Objetivo (mol/L)',
+    molarCoeff: 'Coef. Molar (epsilon)',
+    pathLength: 'Longitud de Camino (cm)',
+    dilutionFactor: 'Factor de Dilución (FD)',
+    spectralScan: 'Barrido Espectral',
+    calculationResult: 'Resultado del Cálculo',
+    effectiveAbsorbance: 'Absorbancia Efectiva (A)',
+    appliedFormula: 'Fórmula Aplicada',
+    wavelength: 'Longitud de onda',
+    beerLambertMethod: 'Método: Cálculo por Ley de Beer-Lambert',
+    analyticalParameters: 'Parámetros Analíticos:',
+    backToMethod: 'Volver al método',
+    regressionCalculator: 'Calculadora de Regresión Lineal',
+    calibrationCurve: 'Curva de Calibración de Datos',
+    clearPoints: 'Limpiar Todos los Puntos',
+    importPoints: 'Importar Puntos del Archivo',
+    concentrationX: 'Concentración (X - mol/L)',
+    absorbanceY: 'Absorbancia (Y - AU)',
+    noDataPoints: 'No se agregaron puntos',
+    linearModel: 'Modelo de Calibración Lineal',
+    leastSquares: 'Método de Mínimos Cuadrados',
+    regressionEquation: 'Ecuación de Regresión',
+    copyEquation: 'Copiar Ecuación',
+    sensitivity: 'Sensibilidad (m)',
+    intercept: 'Intercepto (b)',
+    correlation: 'Correlación (R2)',
+    waitingPoints: 'Esperando puntos de datos',
+    sampleQuantification: 'Cuantificación de Muestra',
+    sampleAbsorbance: 'Absorbancia de la muestra',
+    standardAbsorbance: 'Absorbancia estándar',
+    standardConcentration: 'Concentración estándar',
+    sampleConcentrationUnit: 'Unidad de concentración de la muestra',
+    blankAbsorbance: 'Absorbancia del blanco',
+    transmittance: 'Transmitancia (%)',
+    printMethodReport: 'Imprimir Informe del Método',
+    createCustomMethod: 'Crear Método Personalizado',
+    noProjects: 'No se encontraron proyectos para esta búsqueda.'
+  }
+};
+
 export default function Methods({ currentUser }: MethodsProps) {
+  const { language } = useLanguage();
+  const text = METHODS_TEXT[language];
   const initialStoredProjectsRef = useRef<AnalyticalProject[] | null>(null);
   const getInitialProjects = () => {
     if (!initialStoredProjectsRef.current) {
-      initialStoredProjectsRef.current = loadStoredProjects(currentUser);
+      initialStoredProjectsRef.current = loadRecoveredProjects(currentUser);
     }
 
     return initialStoredProjectsRef.current;
@@ -956,6 +1265,55 @@ export default function Methods({ currentUser }: MethodsProps) {
   useEffect(() => {
     projectSerialTargetRef.current = projectSerialTarget;
   }, [projectSerialTarget]);
+
+  useEffect(() => {
+    const nextProjects = loadRecoveredProjects(currentUser);
+    initialStoredProjectsRef.current = nextProjects;
+
+    setProjects(nextProjects);
+    setSelectedProjectId(nextProjects[0]?.id ?? initialProjectLibrary[0].id);
+    setSelectedMethodId(nextProjects[0]?.methods[0]?.id ?? initialProjectLibrary[0].methods[0].id);
+    setOpenedProjectId(null);
+    setMethodReturnTarget(null);
+    setProjectMode('workspace');
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const storageKey = getMethodsStorageKey(currentUser);
+    const reloadStoredProjects = () => {
+      const nextProjects = loadRecoveredProjects(currentUser);
+      initialStoredProjectsRef.current = nextProjects;
+
+      setProjects((currentProjects) => (
+        areProjectListsEqual(currentProjects, nextProjects) ? currentProjects : nextProjects
+      ));
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === storageKey) {
+        reloadStoredProjects();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reloadStoredProjects();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', reloadStoredProjects);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', reloadStoredProjects);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentUser]);
+
   useEffect(() => {
     storeProjects(currentUser, projects);
   }, [currentUser, projects]);
@@ -1827,10 +2185,10 @@ export default function Methods({ currentUser }: MethodsProps) {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em] font-bold">Standard Operating Procedures</span>
+            <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em] font-bold">{text.sop}</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">Analytical Projects</h1>
-          <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">Choose a compound project, add calculation methods, and automate results from equipment readings like absorbance, transmittance and wavelength.</p>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">{text.title}</h1>
+          <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">{text.description}</p>
         </div>
         <div className="flex w-full md:w-auto flex-col sm:flex-row gap-4">
           <button className="px-6 py-4 bg-white/5 border border-white/5 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl">
@@ -1851,7 +2209,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               : 'bg-white/[0.03] text-white/70 border-white/10 hover:bg-white/[0.08]'
           }`}
         >
-          Project Library
+          {text.projectLibrary}
         </button>
         <button
           onClick={() => openCalculatorTab('lambert-beer')}
@@ -1884,12 +2242,12 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <button
                   onClick={closeMethodBuilder}
                   className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-white/45 hover:text-white hover:bg-white/[0.08] transition-all"
-                  title="Back to project"
+                  title={text.backToProject}
                 >
                   <ArrowLeft size={18} />
                 </button>
                 <div>
-                  <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Formula Method Builder</p>
+                  <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">{text.formulaBuilderTitle}</p>
                   <h2 className="text-2xl font-display font-bold text-white mt-2">{openedProject.compound}</h2>
                   <p className="text-sm text-white/45 mt-2 max-w-3xl leading-relaxed">
                     Create a custom calculation method with variables, time sequences, blank readings and constants.
@@ -1901,7 +2259,7 @@ export default function Methods({ currentUser }: MethodsProps) {
             <section className="glass-panel rounded-2xl p-5 space-y-5 border-primary/10">
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
                 <label className="block space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Method name</span>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.methodName}</span>
                   <input
                     value={newMethodName}
                     onChange={(event) => setNewMethodName(event.target.value)}
@@ -1911,7 +2269,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Calculation type</span>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.calculationType}</span>
                   <select
                     value={newMethodType}
                     onChange={(event) => setNewMethodType(event.target.value as ProjectMethodType)}
@@ -1925,7 +2283,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               </div>
 
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Formula</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.formula}</span>
                 <textarea
                   value={newMethodType === 'custom-formula' ? newMethodExpression : selectedMethodType.expression}
                   onChange={(event) => setNewMethodExpression(event.target.value)}
@@ -1944,7 +2302,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               {newMethodType === 'custom-formula' && (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-5">
                   <label className="block space-y-2">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Result unit</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.resultUnit}</span>
                     <input
                       value={newMethodResultUnit}
                       onChange={(event) => setNewMethodResultUnit(event.target.value)}
@@ -1955,7 +2313,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                     <div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Formula Builder</p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">{text.formulaBuilder}</p>
                       <p className="text-sm text-white/45 mt-2 leading-relaxed">
                         Create variables for equipment readings, time sequences and constants, then click them to assemble the formula.
                       </p>
@@ -1975,7 +2333,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                   <div className="space-y-4">
                     <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4 space-y-3">
-                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Single variable</p>
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">{text.singleVariable}</p>
                       <div className="flex gap-2">
                         <input
                           value={newVariableName}
@@ -1983,14 +2341,14 @@ export default function Methods({ currentUser }: MethodsProps) {
                           className="w-full rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
                           placeholder="Abs_0s, Blank, A_sample"
                         />
-                        <button onClick={() => addFormulaBuilderVariable(newVariableName)} className="px-3 rounded-lg bg-primary text-on-primary" title="Add variable">
+                        <button onClick={() => addFormulaBuilderVariable(newVariableName)} className="px-3 rounded-lg bg-primary text-on-primary" title={text.addVariable}>
                           <Plus size={16} />
                         </button>
                       </div>
                     </div>
 
                     <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4 space-y-3">
-                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Time sequence</p>
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">{text.timeSequence}</p>
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                         <input value={sequencePrefix} onChange={(event) => setSequencePrefix(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="Abs" />
                         <input type="number" value={sequenceStart} onChange={(event) => setSequenceStart(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="0" />
@@ -1998,18 +2356,18 @@ export default function Methods({ currentUser }: MethodsProps) {
                         <input type="number" value={sequenceCount} onChange={(event) => setSequenceCount(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40" placeholder="3" />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => addFormulaBuilderSequence()} className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-primary hover:bg-primary hover:text-on-primary transition-all">Add sequence</button>
-                        <button onClick={() => addFormulaBuilderSequence('Blank')} className="rounded-lg bg-secondary/10 border border-secondary/20 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-secondary hover:bg-secondary hover:text-on-secondary transition-all">Blank sequence</button>
+                        <button onClick={() => addFormulaBuilderSequence()} className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-primary hover:bg-primary hover:text-on-primary transition-all">{text.addSequence}</button>
+                        <button onClick={() => addFormulaBuilderSequence('Blank')} className="rounded-lg bg-secondary/10 border border-secondary/20 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-secondary hover:bg-secondary hover:text-on-secondary transition-all">{text.blankSequence}</button>
                       </div>
-                      <p className="text-[10px] text-white/30">Prefix, start second, interval and count.</p>
+                      <p className="text-[10px] text-white/30">{text.sequenceHint}</p>
                     </div>
 
                     <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4 space-y-3">
-                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Constants</p>
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">{text.constants}</p>
                       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
                         <input value={newConstantName} onChange={(event) => setNewConstantName(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40 placeholder:text-white/25" placeholder="Factor" />
                         <input type="number" step="any" value={newConstantValue} onChange={(event) => setNewConstantValue(event.target.value)} className="rounded-lg bg-[#08101f] border border-white/10 px-3 py-2 text-white outline-none focus:border-primary/40 placeholder:text-white/25" placeholder="10" />
-                        <button onClick={addFormulaBuilderConstant} className="px-3 rounded-lg bg-primary text-on-primary" title="Add constant">
+                        <button onClick={addFormulaBuilderConstant} className="px-3 rounded-lg bg-primary text-on-primary" title={text.addConstant}>
                           <Plus size={16} />
                         </button>
                       </div>
@@ -2018,27 +2376,27 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4">
-                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35 mb-3">Variables</p>
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35 mb-3">{text.variables}</p>
                       <div className="flex flex-wrap gap-2">
                         {formulaBuilderVariables.length ? formulaBuilderVariables.map((variable) => (
                           <button key={variable} onClick={() => appendFormulaToken(variable)} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-widest text-primary hover:bg-primary hover:text-on-primary transition-all">
                             {variable}
                           </button>
                         )) : (
-                          <span className="text-sm text-white/35">No variables created yet.</span>
+                          <span className="text-sm text-white/35">{text.noVariables}</span>
                         )}
                       </div>
                     </div>
 
                     <div className="rounded-xl bg-white/[0.03] border border-white/8 p-4">
-                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35 mb-3">Saved constants</p>
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-white/35 mb-3">{text.savedConstants}</p>
                       <div className="flex flex-wrap gap-2">
                         {formulaBuilderConstants.length ? formulaBuilderConstants.map((constant) => (
                           <button key={constant.name} onClick={() => appendFormulaToken(constant.name)} className="rounded-lg border border-secondary/20 bg-secondary/10 px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-widest text-secondary hover:bg-secondary hover:text-on-secondary transition-all" title={`${constant.name} = ${constant.value}`}>
                             {constant.name} = {constant.value}
                           </button>
                         )) : (
-                          <span className="text-sm text-white/35">No constants saved yet.</span>
+                          <span className="text-sm text-white/35">{text.noConstants}</span>
                         )}
                       </div>
                     </div>
@@ -2066,12 +2424,12 @@ export default function Methods({ currentUser }: MethodsProps) {
                     <button
                       onClick={() => setOpenedProjectId(null)}
                       className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-white/45 hover:text-white hover:bg-white/[0.08] transition-all"
-                      title="Back to project list"
+                      title={text.backToProjectList}
                     >
                       <ArrowLeft size={18} />
                     </button>
                     <div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Project Workspace</p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">{text.workspace}</p>
                       <h2 className="text-2xl font-display font-bold text-white mt-2">{openedProject.compound}</h2>
                       <p className="text-sm text-white/45 mt-2 max-w-2xl leading-relaxed">{openedProject.description}</p>
                     </div>
@@ -2085,8 +2443,8 @@ export default function Methods({ currentUser }: MethodsProps) {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
                 <div className="glass-panel rounded-2xl p-5 border-white/[0.03] space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-white font-display font-bold">Project Methods</h3>
-                    <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">Select one</span>
+                    <h3 className="text-white font-display font-bold">{text.projectMethods}</h3>
+                    <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">{text.selectOne}</span>
                   </div>
 
                   <div className="space-y-2 max-h-[380px] overflow-y-auto custom-scrollbar pr-1">
@@ -2114,7 +2472,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                               <span
                                 role="button"
                                 tabIndex={0}
-                                title="Delete method"
+                                title={text.deleteMethod}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   deleteProjectMethod(openedProject.id, method.id);
@@ -2144,7 +2502,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <div className="glass-panel rounded-2xl p-5 border-primary/10 space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Method Runner</p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">{text.methodRunner}</p>
                       <h3 className="text-xl font-display font-bold text-white mt-2">{selectedMethod?.name ?? 'No method selected'}</h3>
                       <p className="text-sm text-white/45 mt-2 break-words">{selectedMethod?.expression ?? 'Create or select a method to start.'}</p>
                     </div>
@@ -2162,12 +2520,12 @@ export default function Methods({ currentUser }: MethodsProps) {
                     <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 space-y-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-mono uppercase tracking-widest text-white/40">Equipment reading target</p>
-                          <p className="text-xs text-white/35 mt-1">Incoming hardware values fill the selected field.</p>
+                          <p className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.equipmentTarget}</p>
+                          <p className="text-xs text-white/35 mt-1">{text.equipmentTargetHint}</p>
                         </div>
                         <button
                           onClick={isSerialConnected ? disconnectSerial : connectSerial}
-                          title={isSerialConnected ? 'Disconnect Equipment' : 'Connect Serial Equipment'}
+                          title={isSerialConnected ? text.disconnectEquipment : text.connectEquipment}
                           className={`px-4 py-2.5 rounded-xl border transition-all flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest ${
                             isSerialConnected
                               ? 'bg-green-500/10 border-green-500/30 text-green-400'
@@ -2198,19 +2556,19 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                   {selectedMethod && getMethodTargetTab(selectedMethod) === 'linear-regression' && selectedMethod.type === 'calibration-curve' ? (
                     <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-6 text-sm text-white/55 leading-relaxed">
-                      This method uses the linear regression calculator. Open it to add calibration points, calculate the equation and quantify the sample from absorbance.
+                      {text.regressionCalculator}. {text.sampleQuantification}.
                     </div>
                   ) : selectedMethod?.type === 'custom-formula' ? (
                     <div className="space-y-5">
                       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">Recognized variables</p>
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">{text.recognizedVariables}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {customFormulaResult?.variables.length ? customFormulaResult.variables.map((variable) => (
                             <span key={variable} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest text-primary">
                               {variable}
                             </span>
                           )) : (
-                            <span className="text-sm text-white/35">No variables found yet.</span>
+                            <span className="text-sm text-white/35">{text.noRecognizedVariables}</span>
                           )}
                         </div>
                       </div>
@@ -2253,7 +2611,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {(selectedMethod?.type === 'direct-proportion' || selectedMethod?.type === 'blank-correction') && (
                           <label className="block space-y-2">
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Sample absorbance</span>
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.sampleAbsorbance}</span>
                             <input
                               type="number"
                               step="any"
@@ -2268,7 +2626,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                         {selectedMethod?.type === 'direct-proportion' && (
                           <>
                             <label className="block space-y-2">
-                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Standard absorbance</span>
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.standardAbsorbance}</span>
                               <input
                                 type="number"
                                 step="any"
@@ -2279,7 +2637,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                               />
                             </label>
                             <label className="block space-y-2">
-                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Standard concentration</span>
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.standardConcentration}</span>
                               <input
                                 type="number"
                                 step="any"
@@ -2290,7 +2648,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                               />
                             </label>
                             <label className="block space-y-2">
-                              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Sample concentration unit</span>
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.sampleConcentrationUnit}</span>
                               <input
                                 value={methodInputs.concentrationUnit}
                                 onChange={(event) => updateMethodInput('concentrationUnit', event.target.value)}
@@ -2303,7 +2661,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                         {selectedMethod?.type === 'blank-correction' && (
                           <label className="block space-y-2">
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Blank absorbance</span>
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.blankAbsorbance}</span>
                             <input
                               type="number"
                               step="any"
@@ -2317,7 +2675,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                         {selectedMethod?.type === 'transmittance-absorbance' && (
                           <label className="block space-y-2">
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Transmittance (%)</span>
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.transmittance}</span>
                             <input
                               type="number"
                               step="any"
@@ -2336,7 +2694,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                         return (
                           <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-5">
                             <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">
-                              {result?.label ?? 'Result'}
+                              {result?.label ?? text.calculationResult}
                             </p>
                             <p className="text-3xl font-display font-bold text-white mt-3">
                               {result ? formatNumber(result.value) : '---'}
@@ -2354,7 +2712,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                       className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
                     >
                       <Download size={16} />
-                      Print Method Report
+                      {text.printMethodReport}
                     </button>
                   )}
                 </div>
@@ -2367,7 +2725,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 className="w-full py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all flex items-center justify-center gap-2"
               >
                 <Plus size={16} />
-                Create Custom Method
+                {text.createCustomMethod}
               </button>
             </section>
           </div>
@@ -2377,8 +2735,8 @@ export default function Methods({ currentUser }: MethodsProps) {
           <section className="glass-panel rounded-2xl border-white/[0.03] overflow-hidden">
             <div className="p-5 border-b border-white/[0.06] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Project Library</p>
-                <h2 className="text-xl font-display font-bold text-white mt-2">Compound Projects</h2>
+                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">{text.projectLibrary}</p>
+                <h2 className="text-xl font-display font-bold text-white mt-2">{text.compoundProjects}</h2>
               </div>
               <label className="relative w-full lg:w-[340px]">
                 <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
@@ -2386,7 +2744,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                   value={projectSearch}
                   onChange={(event) => setProjectSearch(event.target.value)}
                   className="w-full rounded-xl bg-white/[0.04] border border-white/10 pl-11 pr-4 py-3 text-sm text-white outline-none focus:border-primary/40 placeholder:text-white/25"
-                  placeholder="Search compound, matrix or ID"
+                  placeholder={text.searchProjects}
                 />
               </label>
             </div>
@@ -2394,7 +2752,7 @@ export default function Methods({ currentUser }: MethodsProps) {
             <div className="max-h-[460px] overflow-y-auto custom-scrollbar divide-y divide-white/[0.04]">
               {filteredProjects.length === 0 && (
                 <div className="p-8 text-center text-sm text-white/35">
-                  No projects found for this search.
+                  {text.noProjects}
                 </div>
               )}
 
@@ -2451,8 +2809,8 @@ export default function Methods({ currentUser }: MethodsProps) {
 
           <section className="glass-panel rounded-2xl p-5 space-y-5 border-primary/10">
             <div>
-              <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">Create Project</p>
-              <h2 className="text-xl font-display font-bold text-white mt-2">New Compound</h2>
+              <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">{text.createProject}</p>
+              <h2 className="text-xl font-display font-bold text-white mt-2">{text.newCompound}</h2>
               <p className="text-sm text-white/45 mt-2 leading-relaxed">
                 Register the compound first. Calculation methods can then be configured with readings from the equipment.
               </p>
@@ -2460,7 +2818,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
             <div className="space-y-4">
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Compound name</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.compoundName}</span>
                 <input
                   value={newProjectCompound}
                   onChange={(event) => setNewProjectCompound(event.target.value)}
@@ -2470,7 +2828,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               </label>
 
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Purpose</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.purpose}</span>
                 <textarea
                   value={newProjectDescription}
                   onChange={(event) => setNewProjectDescription(event.target.value)}
@@ -2482,7 +2840,7 @@ export default function Methods({ currentUser }: MethodsProps) {
             </div>
 
             <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-4">
-              <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Default method</p>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">{text.defaultMethod}</p>
               <p className="text-xs text-white/55 mt-2 leading-relaxed">
                 New projects start with a rule-of-three template: C sample = A sample x C standard / A standard.
               </p>
@@ -2494,7 +2852,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               className="w-full py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Plus size={16} />
-              Create Project
+              {text.createProject}
             </button>
           </section>
         </div>
@@ -2508,7 +2866,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                   <Sigma size={22} />
                 </div>
                 <h2 className="text-xl font-display font-bold text-white">
-                  {calcMode === 'concentration' ? 'Find Concentration (c)' : 'Find Absorbance (A)'}
+                  {calcMode === 'concentration' ? text.targetConcentration : text.absorbance}
                 </h2>
               </div>
               
@@ -2522,14 +2880,14 @@ export default function Methods({ currentUser }: MethodsProps) {
                 />
                 <button 
                   onClick={resetCalculator}
-                  title="Reset All Fields"
+                  title={text.resetAll}
                   className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
                 >
                   <RotateCcw size={18} />
                 </button>
                 <button 
                   onClick={() => fileInputRef.current?.click()}
-                  title="Import from file"
+                  title={text.importFile}
                   className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"
                 >
                   <FileUp size={18} />
@@ -2571,7 +2929,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
               {calcMode === 'concentration' && (
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">Hardware reading target</p>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">{text.hardwareTarget}</p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => setLambertSerialTarget('sample')}
@@ -2602,36 +2960,36 @@ export default function Methods({ currentUser }: MethodsProps) {
               {calcMode === 'concentration' ? (
                 <>
                   <label className="block space-y-2">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Target Wavelength (nm)</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.targetWavelength}</span>
                     <div className="relative">
                       <input type="number" step="1" value={targetWavelength} onChange={(e) => setTargetWavelength(e.target.value)} placeholder="Ex: 400" className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                     </div>
                   </label>
                   <label className="block space-y-2">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Absorbance (A)</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.absorbance}</span>
                     <input type="number" step="any" value={absSample} onChange={(e) => setAbsSample(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                   </label>
                   <label className="block space-y-2">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Blank (Baseline)</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.blank}</span>
                     <input type="number" step="any" value={absBlank} onChange={(e) => setAbsBlank(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                   </label>
                 </>
               ) : (
                 <label className="block space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Target Conc. (mol/L)</span>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.targetConcentration}</span>
                   <input type="number" step="any" value={inputConcentration} onChange={(e) => setInputConcentration(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                 </label>
               )}
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Molar Coeff. (epsilon)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.molarCoeff}</span>
                 <input type="number" step="any" value={epsilon} onChange={(e) => setEpsilon(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Path Length (cm)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.pathLength}</span>
                 <input type="number" step="any" value={pathLength} onChange={(e) => setPathLength(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Dilution Factor (DF)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.dilutionFactor}</span>
                 <input type="number" step="any" min="1" value={dilutionFactor} onChange={(e) => setDilutionFactor(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
             </div>
@@ -2784,7 +3142,7 @@ export default function Methods({ currentUser }: MethodsProps) {
               <div className="space-y-4">
                 {calcMode === 'concentration' && (
                 <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
-                  <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Effective Absorbance (A)</p>
+                  <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">{text.effectiveAbsorbance}</p>
                   <p className="flex flex-wrap items-center gap-2 text-white font-mono">
                     <span>{sampleVal.toFixed(4)}</span>
                     <span className="text-white/45">-</span>
@@ -2851,15 +3209,15 @@ export default function Methods({ currentUser }: MethodsProps) {
                   <p className="text-white mt-2 font-semibold">{targetWavelength || 'N/A'} nm</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Molar Coeff. (epsilon)</p>
+                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.molarCoeff}</p>
                   <p className="text-white mt-2 font-semibold">{formatNumber(epsVal)} M^-1cm^-1</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Path Length (l)</p>
+                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.pathLength}</p>
                   <p className="text-white mt-2 font-semibold">{formatNumber(pathVal)} cm</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Dilution Factor</p>
+                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.dilutionFactor}</p>
                   <p className="text-white mt-2 font-semibold">{formatNumber(dilVal)}x</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
@@ -2899,12 +3257,12 @@ export default function Methods({ currentUser }: MethodsProps) {
               <button
                 onClick={returnToProjectMethod}
                 className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-white/45 hover:text-white hover:bg-white/[0.08] transition-all"
-                title="Back to method"
+                title={text.backToMethod}
               >
                 <ArrowLeft size={18} />
               </button>
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">Linear Regression Calculator</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">{text.regressionCalculator}</p>
                 <h2 className="text-2xl font-display font-bold text-white mt-2">{returnTargetMethod.name}</h2>
                 <p className="text-sm text-white/45 mt-2 max-w-2xl leading-relaxed">
                   Return to the project method after building the calibration curve.
@@ -2920,7 +3278,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                 <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
                   <TrendingUp size={22} />
                 </div>
-                <h2 className="text-xl font-display font-bold text-white">Data Calibration Curve</h2>
+                <h2 className="text-xl font-display font-bold text-white">{text.calibrationCurve}</h2>
               </div>
               
               <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -2933,23 +3291,23 @@ export default function Methods({ currentUser }: MethodsProps) {
                 />
                 <button 
                   onClick={() => setRegressionPoints([])}
-                  title="Clear All Points"
-                  aria-label="Clear all calibration points"
+                  title={text.clearPoints}
+                  aria-label={text.clearPoints}
                   className="h-11 w-11 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all inline-flex items-center justify-center"
                 >
                   <RotateCcw size={18} />
                 </button>
                 <button 
                   onClick={() => regressionFileInputRef.current?.click()}
-                  title="Import Points from File"
-                  aria-label="Import calibration points from TXT, CSV, or LOG file"
+                  title={text.importPoints}
+                  aria-label={text.importPoints}
                   className="h-11 w-11 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all inline-flex items-center justify-center"
                 >
                   <FileUp size={18} />
                 </button>
                 <button 
                   onClick={isSerialConnected ? disconnectSerial : connectSerial}
-                  title={isSerialConnected ? "Disconnect Equipment" : "Connect Serial Equipment"}
+                  title={isSerialConnected ? text.disconnectEquipment : text.connectEquipment}
                   aria-label={isSerialConnected ? "Disconnect equipment" : "Connect serial equipment"}
                   className={`h-11 w-11 shrink-0 rounded-xl border transition-all inline-flex items-center justify-center ${
                     isSerialConnected 
@@ -2963,7 +3321,7 @@ export default function Methods({ currentUser }: MethodsProps) {
             </div>
 
             <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-              <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">Hardware reading target</p>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">{text.hardwareTarget}</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setRegressionSerialTarget('point')}
@@ -2990,11 +3348,11 @@ export default function Methods({ currentUser }: MethodsProps) {
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Concentration (X - mol/L)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.concentrationX}</span>
                 <input type="number" step="any" value={newX} onChange={(e) => setNewX(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
               </label>
               <label className="block space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Absorbance (Y - AU)</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.absorbanceY}</span>
                 <div className="flex gap-2">
                   <input type="number" step="any" value={newY} onChange={(e) => setNewY(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
                   <button onClick={addPoint} className="p-3 bg-primary text-on-primary rounded-xl hover:scale-105 transition-all"><Plus size={20} /></button>
@@ -3004,7 +3362,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
             <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
               {regressionPoints.length === 0 && (
-                <div className="py-8 text-center border-2 border-dashed border-white/5 rounded-2xl text-white/20 text-xs font-mono uppercase tracking-widest">No data points added</div>
+                <div className="py-8 text-center border-2 border-dashed border-white/5 rounded-2xl text-white/20 text-xs font-mono uppercase tracking-widest">{text.noDataPoints}</div>
               )}
               {regressionPoints.map((point, idx) => (
                 <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border transition-all group ${
@@ -3035,8 +3393,8 @@ export default function Methods({ currentUser }: MethodsProps) {
               <div className="flex flex-col gap-6 mb-8">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Linear Calibration Model</p>
-                    <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-tight">Least Squares Method</h3>
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">{text.linearModel}</p>
+                    <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-tight">{text.leastSquares}</h3>
                   </div>
                 </div>
 
@@ -3059,7 +3417,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                         <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
                         <div className="relative p-6 rounded-2xl bg-[#08101f]/80 border border-white/10 flex items-center justify-between">
                           <div>
-                            <p className="text-[9px] font-mono text-primary uppercase tracking-[0.2em] mb-2">Regression Equation</p>
+                            <p className="text-[9px] font-mono text-primary uppercase tracking-[0.2em] mb-2">{text.regressionEquation}</p>
                             <p className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
                               {equationText}
                             </p>
@@ -3076,15 +3434,15 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                          <p className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-1">Sensitivity (m)</p>
+                          <p className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-1">{text.sensitivity}</p>
                           <p className="text-sm font-mono text-white font-bold">{results.slope.toFixed(6)}</p>
                         </div>
                         <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                          <p className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-1">Intercept (b)</p>
+                          <p className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-1">{text.intercept}</p>
                           <p className="text-sm font-mono text-white font-bold">{results.intercept.toFixed(6)}</p>
                         </div>
                         <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
-                          <p className="text-[8px] font-mono text-primary/60 uppercase tracking-widest mb-1">Correlation (R²)</p>
+                          <p className="text-[8px] font-mono text-primary/60 uppercase tracking-widest mb-1">{text.correlation}</p>
                           <p className="text-sm font-mono text-primary font-bold">{results.r2.toFixed(6)}</p>
                         </div>
                       </div>
@@ -3103,7 +3461,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                     if (allValid.length === 0) return (
                       <div className="h-full flex flex-col items-center justify-center text-white/10 gap-3">
                         <TrendingUp size={48} className="opacity-5" />
-                        <span className="text-[10px] font-mono uppercase tracking-[0.3em]">Waiting for data points</span>
+                        <span className="text-[10px] font-mono uppercase tracking-[0.3em]">{text.waitingPoints}</span>
                       </div>
                     );
 
@@ -3221,7 +3579,7 @@ export default function Methods({ currentUser }: MethodsProps) {
 
                 {/* Sample Analysis Field */}
                 <div className="mt-6 pt-6 border-t border-white/10">
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-4">Sample Quantification</p>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-4">{text.sampleQuantification}</p>
                   {(() => {
                     const sampleEvaluation = getRegressionSampleEvaluation();
 
@@ -3229,7 +3587,7 @@ export default function Methods({ currentUser }: MethodsProps) {
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                           <label className="block space-y-2">
-                            <span className="text-[10px] font-mono text-secondary uppercase tracking-widest">Sample Absorbance (Y)</span>
+                            <span className="text-[10px] font-mono text-secondary uppercase tracking-widest">{text.sampleAbsorbance}</span>
                             <input
                               type="number"
                               step="any"

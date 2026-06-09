@@ -2,14 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
-  Bell, 
   HelpCircle, 
-  ChevronRight,
+  Languages,
   LogOut,
   Menu,
   X
 } from 'lucide-react';
 import { NAV_ITEMS, OTHER_ITEMS, View } from '../constants';
+import { LANGUAGE_OPTIONS, useLanguage } from '../i18n';
 import type { UserRole } from '../types/auth';
 
 interface LayoutProps {
@@ -26,8 +26,43 @@ interface LayoutProps {
   };
 }
 
+const FAQ_ITEMS = [
+  {
+    questionKey: 'faq.reports.question',
+    answerKey: 'faq.reports.answer'
+  },
+  {
+    questionKey: 'faq.result.question',
+    answerKey: 'faq.result.answer'
+  },
+  {
+    questionKey: 'faq.search.question',
+    answerKey: 'faq.search.answer'
+  },
+  {
+    questionKey: 'faq.pdf.question',
+    answerKey: 'faq.pdf.answer'
+  }
+] as const;
+
+function getNavLabelKey(view: View) {
+  switch (view) {
+    case 'dashboard': return 'nav.dashboard';
+    case 'spectrophotometry': return 'nav.spectrophotometry';
+    case 'reports': return 'nav.reports';
+    case 'methods': return 'nav.methods';
+    case 'user-management': return 'nav.user-management';
+    case 'audit-logs': return 'nav.audit-logs';
+    case 'settings': return 'nav.settings';
+    default: return 'nav.dashboard';
+  }
+}
+
 export default function Layout({ children, activeView, contentKey, onViewChange, onLogout, user }: LayoutProps) {
+  const { language, setLanguage, t } = useLanguage();
   const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const [isHelpOpen, setHelpOpen] = useState(false);
+  const [isLanguageOpen, setLanguageOpen] = useState(false);
   const initials = user.name
     .split(' ')
     .filter(Boolean)
@@ -47,6 +82,8 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
   }, []);
 
   const handleViewChange = (view: View) => {
+    setHelpOpen(false);
+    setLanguageOpen(false);
     onViewChange(view);
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -70,7 +107,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
       {isSidebarOpen && (
         <button
           type="button"
-          aria-label="Close sidebar overlay"
+          aria-label={t('layout.sidebar.close')}
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-40 bg-[#020617]/65 backdrop-blur-sm lg:hidden"
         />
@@ -103,7 +140,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
                   className="whitespace-nowrap"
                 >
                   <h1 className="text-lg font-bold tracking-tight text-white font-display">Expert Chemistry</h1>
-                  <p className="text-[9px] uppercase tracking-[0.3em] text-secondary font-mono font-bold">Automation Core</p>
+                  <p className="text-[9px] uppercase tracking-[0.3em] text-secondary font-mono font-bold">{t('layout.logo.subtitle')}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -122,7 +159,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
                     : 'text-white/40 hover:bg-white/[0.03] hover:text-white'}`}
               >
                 <item.icon size={18} className={`transition-all duration-300 ${activeView === item.id ? 'text-primary' : 'group-hover:text-white group-hover:scale-110'}`} />
-                {isSidebarOpen && <span className="font-medium text-sm tracking-wide">{item.label}</span>}
+                {isSidebarOpen && <span className="font-medium text-sm tracking-wide">{t(getNavLabelKey(item.id))}</span>}
                 {activeView === item.id && (
                   <motion.div 
                     layoutId="activeBar"
@@ -146,7 +183,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
                     : 'text-white/40 hover:bg-white/[0.03] hover:text-white'}`}
               >
                 <item.icon size={18} className={`transition-all duration-300 ${activeView === item.id ? 'text-primary' : 'group-hover:text-white group-hover:scale-110'}`} />
-                {isSidebarOpen && <span className="font-medium text-sm tracking-wide">{item.label}</span>}
+                {isSidebarOpen && <span className="font-medium text-sm tracking-wide">{t(getNavLabelKey(item.id))}</span>}
               </button>
             ))}
             
@@ -193,25 +230,136 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary transition-all group-focus-within:scale-110" />
               <input 
                 type="text" 
-                placeholder="Search molecular data, equipment or protocols..." 
+                placeholder={t('layout.search.placeholder')} 
                 className="w-full bg-white/5 border border-white/5 hover:border-white/10 focus:border-primary/20 rounded-xl py-3 pl-12 pr-4 text-sm outline-none transition-all placeholder:text-white/20 focus:bg-white/[0.08] focus:shadow-[0_0_40px_rgba(167,200,255,0.05)]"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full lg:w-auto">
-            <div className="flex items-center gap-3">
-              <button id="noti-btn" className="p-2.5 text-white/40 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/5 rounded-xl transition-all relative group">
-                <Bell size={20} className="group-hover:rotate-12 transition-transform" />
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-secondary rounded-full border-2 border-[#161d2f] animate-pulse shadow-[0_0_10px_rgba(118,243,234,0.5)]" />
-              </button>
-              <button id="help-btn" className="p-2.5 text-white/40 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <div className="relative flex items-center gap-3">
+              <div className="relative">
+                <button
+                  id="language-btn"
+                  type="button"
+                  aria-expanded={isLanguageOpen}
+                  aria-controls="language-panel"
+                  onClick={() => {
+                    setLanguageOpen((current) => !current);
+                    setHelpOpen(false);
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-mono font-bold uppercase tracking-[0.18em] transition-all ${
+                    isLanguageOpen
+                      ? 'text-primary bg-primary/10 border-primary/20'
+                      : 'text-white/45 hover:text-white hover:bg-white/5 border-transparent hover:border-white/5'
+                  }`}
+                >
+                  <Languages size={18} />
+                  {language.toUpperCase()}
+                </button>
+
+                <AnimatePresence>
+                  {isLanguageOpen && (
+                    <motion.div
+                      id="language-panel"
+                      initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                      transition={{ duration: 0.18 }}
+                      className="absolute right-0 top-12 z-50 w-56 rounded-2xl border border-white/10 bg-[#0b1121]/98 p-2 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl"
+                    >
+                      <p className="px-3 pb-2 pt-1 text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-white/35">
+                        {t('layout.language.title')}
+                      </p>
+                      <div className="space-y-1">
+                        {LANGUAGE_OPTIONS.map((option) => {
+                          const isSelected = language === option.id;
+
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => {
+                                setLanguage(option.id);
+                                setLanguageOpen(false);
+                              }}
+                              className={`w-full rounded-xl px-3 py-2.5 text-left transition-all ${
+                                isSelected
+                                  ? 'bg-primary/12 text-primary border border-primary/20'
+                                  : 'text-white/60 hover:bg-white/[0.05] hover:text-white border border-transparent'
+                              }`}
+                            >
+                              <span className="text-sm font-semibold">{t(option.labelKey)}</span>
+                              <span className="ml-2 text-[10px] font-mono text-white/30">{option.shortLabel}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <button
+                id="help-btn"
+                type="button"
+                aria-expanded={isHelpOpen}
+                aria-controls="help-faq-panel"
+                onClick={() => {
+                  setHelpOpen((current) => !current);
+                  setLanguageOpen(false);
+                }}
+                className={`p-2.5 rounded-xl transition-all border ${
+                  isHelpOpen
+                    ? 'text-primary bg-primary/10 border-primary/20'
+                    : 'text-white/40 hover:text-white hover:bg-white/5 border-transparent hover:border-white/5'
+                }`}
+              >
                 <HelpCircle size={20} />
               </button>
+
+              <AnimatePresence>
+                {isHelpOpen && (
+                  <motion.div
+                    id="help-faq-panel"
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ duration: 0.18 }}
+                    className="absolute right-0 top-12 z-50 w-[min(88vw,420px)] rounded-2xl border border-white/10 bg-[#0b1121]/98 p-4 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3">
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-primary font-bold">
+                          {t('layout.help.quick')}
+                        </p>
+                        <h2 className="mt-1 text-sm font-semibold text-white">{t('layout.help.title')}</h2>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={t('layout.help.close')}
+                        onClick={() => setHelpOpen(false)}
+                        className="rounded-lg p-1.5 text-white/35 hover:bg-white/5 hover:text-white transition-all"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+                      {FAQ_ITEMS.map((item) => (
+                        <div key={item.questionKey} className="rounded-xl border border-white/8 bg-white/[0.025] p-3 mb-2 last:mb-0">
+                          <p className="text-sm font-semibold text-white leading-snug">{t(item.questionKey)}</p>
+                          <p className="mt-2 text-xs leading-relaxed text-white/55">{t(item.answerKey)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             
             <div className="flex items-center gap-3 sm:gap-6">
-              <button id="logout-btn" title="System Logout" onClick={onLogout} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
+              <button id="logout-btn" title={t('layout.logout')} onClick={onLogout} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
                 <LogOut size={20} />
               </button>
             </div>
