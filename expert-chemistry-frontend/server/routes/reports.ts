@@ -1,5 +1,5 @@
-import { Router } from 'express';
-import { createReport, listReports } from '../services/reports.js';
+import { Router, type Request } from 'express';
+import { createReport, deleteReportsByProjectKeys, listReports } from '../services/reports.js';
 import type { CreateReportBody } from '../types/reports.js';
 import { getSearchTerm } from '../utils/http.js';
 
@@ -33,6 +33,72 @@ function normalizeReportGeneratedAt(value: string | undefined) {
 
   return new Date().toISOString();
 }
+
+function getProjectKeysFromRequest(request: Request) {
+  const body = (request.body ?? {}) as { projectKeys?: unknown; projectKey?: unknown };
+  const rawProjectKeys = Array.isArray(body.projectKeys) ? body.projectKeys : [body.projectKey, request.params.projectKey];
+
+  return rawProjectKeys
+    .filter((projectKey): projectKey is string => typeof projectKey === 'string')
+    .map((projectKey) => projectKey.trim())
+    .filter(Boolean);
+}
+
+router.delete('/project', async (request, response) => {
+  const currentUser = response.locals.currentUser;
+  const projectKeys = getProjectKeysFromRequest(request);
+
+  if (!currentUser) {
+    response.status(401).json({ error: 'Authentication required.' });
+    return;
+  }
+
+  if (currentUser.role !== 'admin') {
+    response.status(403).json({ error: 'Administrator access required.' });
+    return;
+  }
+
+  if (!projectKeys.length) {
+    response.status(400).json({ error: 'Project key is required.' });
+    return;
+  }
+
+  try {
+    const deletedReports = await deleteReportsByProjectKeys(projectKeys, currentUser.id, true);
+    response.json({ deletedReports });
+  } catch (error) {
+    console.error('Failed to delete report project:', error);
+    response.status(500).json({ error: 'Failed to delete report project.' });
+  }
+});
+
+router.delete('/project/:projectKey', async (request, response) => {
+  const currentUser = response.locals.currentUser;
+  const projectKeys = getProjectKeysFromRequest(request);
+
+  if (!currentUser) {
+    response.status(401).json({ error: 'Authentication required.' });
+    return;
+  }
+
+  if (currentUser.role !== 'admin') {
+    response.status(403).json({ error: 'Administrator access required.' });
+    return;
+  }
+
+  if (!projectKeys.length) {
+    response.status(400).json({ error: 'Project key is required.' });
+    return;
+  }
+
+  try {
+    const deletedReports = await deleteReportsByProjectKeys(projectKeys, currentUser.id, true);
+    response.json({ deletedReports });
+  } catch (error) {
+    console.error('Failed to delete report project:', error);
+    response.status(500).json({ error: 'Failed to delete report project.' });
+  }
+});
 
 router.get('/', async (request, response) => {
   const currentUser = response.locals.currentUser;

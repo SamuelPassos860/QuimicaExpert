@@ -50,20 +50,20 @@ async function ensureUsersTable() {
       user_id VARCHAR(100) NOT NULL,
       full_name VARCHAR(160) NOT NULL,
       password_hash TEXT NOT NULL,
-      role VARCHAR(20) NOT NULL DEFAULT 'user',
+      role VARCHAR(20) NOT NULL DEFAULT 'analyst',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
   await pool.query(`
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'
+    ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'analyst'
   `);
 
   await pool.query(`
     UPDATE users
-    SET role = 'user'
-    WHERE role IS NULL OR role NOT IN ('admin', 'user')
+    SET role = 'analyst'
+    WHERE role IS NULL OR role = 'user' OR role NOT IN ('admin', 'analyst')
   `);
 
   await pool.query(`
@@ -189,7 +189,7 @@ export async function createUser(userId: string, fullName: string, password: str
   }
 
   const existingUsersCount = await pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM users');
-  const role: UserRole = forcedRole || (Number(existingUsersCount.rows[0]?.count || '0') === 0 ? 'admin' : 'user');
+  const role: UserRole = forcedRole || (Number(existingUsersCount.rows[0]?.count || '0') === 0 ? 'admin' : 'analyst');
   const passwordHash = await hashPassword(password);
   const result = await pool.query<UserRow>(
     `

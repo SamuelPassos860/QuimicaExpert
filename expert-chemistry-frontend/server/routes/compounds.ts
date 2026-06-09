@@ -20,6 +20,11 @@ router.get('/', async (request, response) => {
 });
 
 router.post('/', async (request, response) => {
+  if (response.locals.currentUser?.role !== 'admin') {
+    response.status(403).json({ error: 'Admin access required.' });
+    return;
+  }
+
   const validation = validateCompoundUpsert((request.body ?? {}) as CompoundUpsertBody);
 
   if (validation.error) {
@@ -61,6 +66,11 @@ router.post('/', async (request, response) => {
 });
 
 router.delete('/:cas', async (request, response) => {
+  if (response.locals.currentUser?.role !== 'admin') {
+    response.status(403).json({ error: 'Admin access required.' });
+    return;
+  }
+
   const cas = request.params.cas?.trim();
 
   if (!cas) {

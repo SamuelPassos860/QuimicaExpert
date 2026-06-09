@@ -1,17 +1,15 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import { View } from './constants';
+import { LanguageProvider, useLanguage } from './i18n';
 import type { AuthUser } from './types/auth';
 
 import AuthView from './views/Auth';
 
 const Dashboard = lazy(() => import('./views/Dashboard'));
-const Equipment = lazy(() => import('./views/Equipment'));
 const Reports = lazy(() => import('./views/Reports'));
-const Clients = lazy(() => import('./views/Clients'));
 const Methods = lazy(() => import('./views/Methods'));
 const Settings = lazy(() => import('./views/Settings'));
-const FileUpload = lazy(() => import('./views/FileUpload'));
 const Spectrophotometry = lazy(() => import('./views/Spectrophotometry'));
 const UserManagement = lazy(() => import('./views/UserManagement'));
 const AuditLogs = lazy(() => import('./views/AuditLogs'));
@@ -23,11 +21,40 @@ type ViewOptions = {
   reportsProjectLabel?: string;
 };
 
+const ROLE_DEFAULT_VIEW: Record<AuthUser['role'], View> = {
+  admin: 'dashboard',
+  analyst: 'methods'
+};
+
+const ROLE_ALLOWED_VIEWS: Record<AuthUser['role'], View[]> = {
+  admin: ['dashboard', 'spectrophotometry', 'reports', 'methods', 'user-management', 'audit-logs', 'settings'],
+  analyst: ['methods', 'reports', 'audit-logs']
+};
+
+function canAccessView(role: AuthUser['role'], view: View) {
+  return ROLE_ALLOWED_VIEWS[role].includes(view);
+}
+
 function ViewLoadingFallback() {
+  const { t } = useLanguage();
+
   return (
     <div className="glass-panel rounded-[28px] px-8 py-6 text-center border-white/10">
-      <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">Loading View</p>
-      <p className="mt-3 text-white/70">Preparing the selected workspace...</p>
+      <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">{t('app.loadingView.title')}</p>
+      <p className="mt-3 text-white/70">{t('app.loadingView.message')}</p>
+    </div>
+  );
+}
+
+function CheckingSessionFallback() {
+  const { t } = useLanguage();
+
+  return (
+    <div className="min-h-screen bg-[#0b1121] text-white flex items-center justify-center">
+      <div className="glass-panel rounded-[28px] px-8 py-6 text-center border-white/10">
+        <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">{t('app.checkingSession.title')}</p>
+        <p className="mt-3 text-white/70">{t('app.checkingSession.message')}</p>
+      </div>
     </div>
   );
 }
@@ -54,11 +81,11 @@ function normalizeAuthUser(value: unknown): AuthUser | null {
     userId: typeof candidate.userId === 'string' ? candidate.userId : '',
     fullName: typeof candidate.fullName === 'string' ? candidate.fullName : 'Unknown User',
     createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : '',
-    role: candidate.role === 'admin' ? 'admin' : 'user'
+    role: candidate.role === 'admin' ? 'admin' : 'analyst'
   };
 }
 
-export default function App() {
+function AppContent() {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [viewResetKey, setViewResetKey] = useState(0);
   const [spectrophotometryInitialTab, setSpectrophotometryInitialTab] = useState<SpectrophotometryTab | undefined>();
@@ -88,6 +115,13 @@ export default function App() {
 
         if (isMounted) {
           setCurrentUser(normalizedUser);
+          if (normalizedUser) {
+            setActiveView((currentView) => (
+              canAccessView(normalizedUser.role, currentView)
+                ? currentView
+                : ROLE_DEFAULT_VIEW[normalizedUser.role]
+            ));
+          }
         }
       } catch (error) {
         console.error('Failed to check current session:', error);
@@ -118,7 +152,7 @@ export default function App() {
     }
 
     setCurrentUser(normalizedUser);
-    setActiveView('dashboard');
+    setActiveView(ROLE_DEFAULT_VIEW[normalizedUser.role]);
     setSpectrophotometryInitialTab(undefined);
     setReportsInitialProjectKey(undefined);
     setReportsInitialProjectLabel(undefined);
@@ -141,7 +175,21 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!currentUser || canAccessView(currentUser.role, activeView)) return;
+
+    setActiveView(ROLE_DEFAULT_VIEW[currentUser.role]);
+    setSpectrophotometryInitialTab(undefined);
+    setReportsInitialProjectKey(undefined);
+    setReportsInitialProjectLabel(undefined);
+  }, [activeView, currentUser]);
+
   const handleViewChange = (view: View) => {
+    if (currentUser && !canAccessView(currentUser.role, view)) {
+      setActiveView(ROLE_DEFAULT_VIEW[currentUser.role]);
+      return;
+    }
+
     setSpectrophotometryInitialTab(undefined);
     setReportsInitialProjectKey(undefined);
     setReportsInitialProjectLabel(undefined);
@@ -155,6 +203,11 @@ export default function App() {
   };
 
   const handleOpenView = (view: View, options?: ViewOptions) => {
+    if (currentUser && !canAccessView(currentUser.role, view)) {
+      setActiveView(ROLE_DEFAULT_VIEW[currentUser.role]);
+      return;
+    }
+
     setSpectrophotometryInitialTab(options?.spectrophotometryTab);
     setReportsInitialProjectKey(options?.reportsProjectKey);
     setReportsInitialProjectLabel(options?.reportsProjectLabel);
@@ -162,30 +215,28 @@ export default function App() {
   };
 
   const renderView = (user: AuthUser) => {
-    switch (activeView) {
+    if (!canAccessView(user.role, activeView)) {
+      return renderViewByKey(user, ROLE_DEFAULT_VIEW[user.role]);
+    }
+
+    return renderViewByKey(user, activeView);
+  };
+
+  const renderViewByKey = (user: AuthUser, view: View) => {
+    switch (view) {
       case 'dashboard': return <Dashboard currentUser={user} onOpenView={handleOpenView} />;
       case 'spectrophotometry': return <Spectrophotometry currentUser={user} initialTab={spectrophotometryInitialTab} />;
-      case 'equipment': return <Equipment />;
       case 'reports': return <Reports currentUser={user} initialProjectKey={reportsInitialProjectKey} initialProjectLabel={reportsInitialProjectLabel} />;
-      case 'clients': return <Clients />;
       case 'methods': return <Methods currentUser={user} />;
       case 'settings': return <Settings />;
-      case 'upload': return <FileUpload />;
       case 'user-management': return <UserManagement currentUser={user} />;
       case 'audit-logs': return <AuditLogs />;
-      default: return <Dashboard currentUser={user} onOpenView={handleOpenView} />;
+      default: return renderViewByKey(user, ROLE_DEFAULT_VIEW[user.role]);
     }
   };
 
   if (isCheckingSession) {
-    return (
-      <div className="min-h-screen bg-[#0b1121] text-white flex items-center justify-center">
-        <div className="glass-panel rounded-[28px] px-8 py-6 text-center border-white/10">
-          <p className="text-sm uppercase tracking-[0.28em] text-secondary font-semibold">Checking Session</p>
-          <p className="mt-3 text-white/70">Validating the active lab account...</p>
-        </div>
-      </div>
-    );
+    return <CheckingSessionFallback />;
   }
 
   if (!currentUser) {
@@ -208,5 +259,13 @@ export default function App() {
         {renderView(currentUser)}
       </Suspense>
     </Layout>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }

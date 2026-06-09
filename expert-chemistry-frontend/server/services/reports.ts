@@ -200,8 +200,121 @@ export async function createReport(input: CreateReportInput) {
   return mapReportRow(result.rows[0]);
 }
 
+type StoredReport = ReturnType<typeof mapReportRow>;
+
+function normalizeProjectLabel(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function getReportIdentity(report: StoredReport) {
+  if (report.projectName || report.projectId) {
+    const [, ...rawAnalysisParts] = report.compoundName.split(' - ');
+    return {
+      compound: report.projectName || report.projectId || 'Project',
+      analysis: rawAnalysisParts.join(' - ').trim() || report.compoundName || report.source || 'Analytical report'
+    };
+  }
+
+  const [rawCompound, ...rawAnalysisParts] = report.compoundName.split(' - ');
+  const compound = rawCompound?.trim() || report.compoundName || 'Not identified';
+  const analysis = rawAnalysisParts.join(' - ').trim() || report.source || 'Analytical report';
+
+  return {
+    compound,
+    analysis
+  };
+}
+
+function getDashboardProjectKey(report: StoredReport) {
+  const identity = getReportIdentity(report);
+  const normalizedProject = normalizeProjectLabel(identity.compound);
+
+  return report.projectId || (report.casId && report.casId !== 'N/A' ? report.casId : normalizedProject || identity.compound);
+}
+
+function getReportsProjectKey(report: StoredReport) {
+  if (report.projectId || report.projectName) {
+    const label = report.projectName || report.projectId || 'Project';
+    return report.projectId || normalizeProjectLabel(label);
+  }
+
+  const [rawProject] = report.compoundName.split(' - ');
+  const label = rawProject?.trim() || report.compoundName || 'Not identified';
+
+  return report.casId && report.casId !== 'N/A'
+    ? report.casId
+    : normalizeProjectLabel(label) || label;
+}
+
 export async function listReports(ownerUserId: number, isAdmin: boolean, search: string) {
   await initializeReportsSchema();
   const result = await pool.query<ReportRow>(listReportsQuery, [isAdmin, ownerUserId, toLikePattern(search)]);
   return result.rows.map(mapReportRow);
+}
+
+export async function deleteReportsByProjectKeys(projectKeys: string[], ownerUserId: number, isAdmin: boolean) {
+  await initializeReportsSchema();
+  const normalizedProjectKeys = new Set(
+    projectKeys
+      .map((projectKey) => projectKey.trim())
+      .filter(Boolean)
+      .flatMap((projectKey) => [projectKey, normalizeProjectLabel(projectKey)])
+      .filter(Boolean)
+  );
+
+  if (!normalizedProjectKeys.size) {
+    return 0;
+  }
+
+  const result = await pool.query<ReportRow>(`
+    SELECT
+      id,
+      report_id,
+      project_id,
+      project_name,
+      owner_user_id,
+      owner_user_identifier,
+      owner_full_name,
+      compound_name,
+      cas_id,
+      lambda_max,
+      solvent,
+      source,
+      epsilon_value,
+      path_length_value,
+      concentration_value,
+      absorbance,
+      generated_at,
+      created_at
+    FROM reports
+    WHERE ($1::boolean = true OR owner_user_id = $2)
+    ORDER BY created_at DESC, id DESC;
+  `, [isAdmin, ownerUserId]);
+
+  const reportIds = result.rows
+    .map(mapReportRow)
+    .filter((report) => {
+      const candidateKeys = [
+        getDashboardProjectKey(report),
+        getReportsProjectKey(report),
+        report.projectId ?? '',
+        report.projectName ?? '',
+        report.casId ?? '',
+        getReportIdentity(report).compound
+      ].flatMap((candidateKey) => [candidateKey, normalizeProjectLabel(candidateKey)]).filter(Boolean);
+
+      return candidateKeys.some((candidateKey) => normalizedProjectKeys.has(candidateKey));
+    })
+    .map((report) => report.id);
+
+  if (!reportIds.length) {
+    return 0;
+  }
+
+  const deleteResult = await pool.query<{ id: number }>(
+    'DELETE FROM reports WHERE id = ANY($1::bigint[]) RETURNING id;',
+    [reportIds]
+  );
+
+  return deleteResult.rowCount ?? 0;
 }
