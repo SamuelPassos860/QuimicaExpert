@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AUDIT_EVENT_TYPES, AUDIT_RESOURCE_TYPES, type AuditLogEventType, type AuditLogResourceType } from '../types/audit.js';
-import { createUser, isDuplicateUserIdError, listUsers, updateUserRole } from '../services/auth.js';
+import { createAuditLog } from '../services/audit.js';
+import { createUser, isDuplicateEmailError, isDuplicateUserIdError, listUsers, updateUserRole } from '../services/auth.js';
 import { listAuditLogs } from '../services/audit.js';
 import { requireAdmin, requireAdminOrAnalyst } from '../middleware/auth.js';
 import type { AdminCreateUserBody, UserRoleUpdateBody } from '../types/auth.js';
@@ -65,15 +66,40 @@ router.post('/users', requireAdmin, async (request, response) => {
   try {
     const user = await createUser(
       validation.data!.userId,
+      validation.data!.email,
       validation.data!.fullName,
       validation.data!.password,
       validation.data!.role
     );
 
+    const currentUser = response.locals.currentUser;
+
+    if (currentUser) {
+      await createAuditLog({
+        actorUserId: currentUser.id,
+        actorUserIdentifier: currentUser.userId,
+        actorFullName: currentUser.fullName,
+        eventType: 'user_created',
+        resourceType: 'user',
+        resourceKey: user.userId,
+        metadata: {
+          createdUserId: user.userId,
+          createdFullName: user.fullName,
+          role: user.role,
+          source: 'admin_panel'
+        }
+      });
+    }
+
     response.status(201).json({ user });
   } catch (error) {
     if (isDuplicateUserIdError(error)) {
       response.status(409).json({ error: 'A user with this User ID already exists.' });
+      return;
+    }
+
+    if (isDuplicateEmailError(error)) {
+      response.status(409).json({ error: 'A user with this email already exists.' });
       return;
     }
 

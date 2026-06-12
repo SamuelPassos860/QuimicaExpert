@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { pool } from '../db.js';
 import type { AuthUser, UserRole } from '../types/auth.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
@@ -7,6 +7,7 @@ import { getSessionMaxAgeMs } from '../utils/http.js';
 interface UserRow {
   id: number;
   user_id: string;
+  email: string;
   full_name: string;
   created_at: string;
   password_hash: string;
@@ -22,6 +23,7 @@ interface SessionRow {
 interface PasswordResetTokenRow {
   user_id: number;
   reset_user_id: string;
+  email: string;
   full_name: string;
   created_at: string;
   role: UserRole;
@@ -32,11 +34,13 @@ interface PasswordResetTokenRow {
 
 let schemaReadyPromise: Promise<void> | null = null;
 const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
+const EMAIL_VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
 
-function mapUser(row: Pick<UserRow, 'id' | 'user_id' | 'full_name' | 'created_at' | 'role'>): AuthUser {
+function mapUser(row: Pick<UserRow, 'id' | 'user_id' | 'email' | 'full_name' | 'created_at' | 'role'>): AuthUser {
   return {
     id: row.id,
     userId: row.user_id,
+    email: row.email,
     fullName: row.full_name,
     createdAt: row.created_at,
     role: row.role
@@ -48,11 +52,24 @@ async function ensureUsersTable() {
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
       user_id VARCHAR(100) NOT NULL,
+      email VARCHAR(254) NOT NULL DEFAULT '',
       full_name VARCHAR(160) NOT NULL,
       password_hash TEXT NOT NULL,
       role VARCHAR(20) NOT NULL DEFAULT 'analyst',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email VARCHAR(254) NOT NULL DEFAULT ''
+  `);
+
+  await pool.query(`
+    UPDATE users
+    SET email = LOWER(user_id)
+    WHERE email = ''
+      AND user_id ~* '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'
   `);
 
   await pool.query(`
@@ -69,6 +86,12 @@ async function ensureUsersTable() {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS users_user_id_lower_idx
     ON users (LOWER(user_id))
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx
+    ON users (LOWER(email))
+    WHERE email <> ''
   `);
 
   await pool.query(`
@@ -112,6 +135,28 @@ async function ensureUsersTable() {
     ON password_reset_tokens (expires_at)
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_verification_codes (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      email VARCHAR(254) NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS email_verification_codes_user_id_idx
+    ON email_verification_codes (user_id)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS email_verification_codes_expires_at_idx
+    ON email_verification_codes (expires_at)
+  `);
+
   const adminCountResult = await pool.query<{ count: string }>(
     "SELECT COUNT(*)::text AS count FROM users WHERE role = 'admin'"
   );
@@ -138,6 +183,10 @@ function hashPasswordResetToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function hashEmailVerificationCode(userId: number, email: string, code: string) {
+  return createHash('sha256').update(`${userId}:${email.toLowerCase()}:${code}`).digest('hex');
+}
+
 function buildSessionExpiryDate() {
   return new Date(Date.now() + getSessionMaxAgeMs());
 }
@@ -146,12 +195,20 @@ function buildPasswordResetExpiryDate() {
   return new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
 }
 
+function buildEmailVerificationExpiryDate() {
+  return new Date(Date.now() + EMAIL_VERIFICATION_CODE_TTL_MS);
+}
+
 export function generateSessionToken() {
   return randomBytes(32).toString('hex');
 }
 
 export function generatePasswordResetToken() {
   return randomBytes(32).toString('hex');
+}
+
+export function generateEmailVerificationCode() {
+  return String(randomInt(100000, 1000000));
 }
 
 export function initializeAuthSchema() {
@@ -169,7 +226,7 @@ export async function hasAnyUsers() {
   return Number(result.rows[0]?.count || '0') > 0;
 }
 
-export async function createUser(userId: string, fullName: string, password: string, forcedRole?: UserRole) {
+export async function createUser(userId: string, email: string, fullName: string, password: string, forcedRole?: UserRole) {
   await initializeAuthSchema();
 
   const existingUser = await pool.query<Pick<UserRow, 'id'> & { id: number }>(
@@ -188,16 +245,32 @@ export async function createUser(userId: string, fullName: string, password: str
     throw error;
   }
 
+  const existingEmail = await pool.query<Pick<UserRow, 'id'> & { id: number }>(
+    `
+      SELECT id
+      FROM users
+      WHERE LOWER(email) = LOWER($1)
+      LIMIT 1
+    `,
+    [email]
+  );
+
+  if (existingEmail.rowCount) {
+    const error = new Error('Email already exists.');
+    error.name = 'DuplicateEmailError';
+    throw error;
+  }
+
   const existingUsersCount = await pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM users');
   const role: UserRole = forcedRole || (Number(existingUsersCount.rows[0]?.count || '0') === 0 ? 'admin' : 'analyst');
   const passwordHash = await hashPassword(password);
   const result = await pool.query<UserRow>(
     `
-      INSERT INTO users (user_id, full_name, password_hash, role)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, user_id, full_name, created_at, role
+      INSERT INTO users (user_id, email, full_name, password_hash, role)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, user_id, email, full_name, created_at, role
     `,
-    [userId, fullName, passwordHash, role]
+    [userId, email, fullName, passwordHash, role]
   );
 
   return mapUser(result.rows[0]!);
@@ -208,7 +281,7 @@ export async function loginUser(userId: string, password: string) {
 
   const result = await pool.query<UserRow>(
     `
-      SELECT id, user_id, full_name, created_at, password_hash, role
+      SELECT id, user_id, email, full_name, created_at, password_hash, role
       FROM users
       WHERE LOWER(user_id) = LOWER($1)
       LIMIT 1
@@ -241,7 +314,7 @@ export async function createPasswordResetTokenForUser(userId: string) {
 
     const userResult = await client.query<UserRow>(
       `
-        SELECT id, user_id, full_name, created_at, password_hash, role
+        SELECT id, user_id, email, full_name, created_at, password_hash, role
         FROM users
         WHERE LOWER(user_id) = LOWER($1)
         LIMIT 1
@@ -308,6 +381,7 @@ export async function resetPasswordWithToken(token: string, password: string) {
         SELECT
           rt.user_id,
           u.user_id AS reset_user_id,
+          u.email,
           u.full_name,
           u.created_at,
           u.role,
@@ -337,7 +411,7 @@ export async function resetPasswordWithToken(token: string, password: string) {
         UPDATE users
         SET password_hash = $2
         WHERE id = $1
-        RETURNING id, user_id, full_name, created_at, password_hash, role
+        RETURNING id, user_id, email, full_name, created_at, password_hash, role
       `,
       [resetToken.user_id, passwordHash]
     );
@@ -357,6 +431,172 @@ export async function resetPasswordWithToken(token: string, password: string) {
         WHERE user_id = $1
       `,
       [resetToken.user_id]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedUser = updatedUserResult.rows[0];
+    return updatedUser ? mapUser(updatedUser) : null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function createEmailVerificationCodeForUser(userId: number, email: string) {
+  await initializeAuthSchema();
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const existingEmail = await client.query<Pick<UserRow, 'id' | 'user_id'> & { id: number }>(
+      `
+        SELECT id, user_id
+        FROM users
+        WHERE LOWER(email) = LOWER($1)
+          AND id <> $2
+        LIMIT 1
+      `,
+      [normalizedEmail, userId]
+    );
+
+    if (existingEmail.rowCount) {
+      const error = new Error('Email already exists.');
+      error.name = 'DuplicateEmailError';
+      throw error;
+    }
+
+    const userResult = await client.query<UserRow>(
+      `
+        SELECT id, user_id, email, full_name, created_at, password_hash, role
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [userId]
+    );
+
+    const user = userResult.rows[0];
+
+    if (!user) {
+      await client.query('COMMIT');
+      return null;
+    }
+
+    const code = generateEmailVerificationCode();
+    const codeHash = hashEmailVerificationCode(user.id, normalizedEmail, code);
+    const expiresAt = buildEmailVerificationExpiryDate();
+
+    await client.query(
+      `
+        UPDATE email_verification_codes
+        SET used_at = NOW()
+        WHERE user_id = $1
+          AND used_at IS NULL
+          AND expires_at > NOW()
+      `,
+      [user.id]
+    );
+
+    await client.query(
+      `
+        INSERT INTO email_verification_codes (user_id, email, code_hash, expires_at)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [user.id, normalizedEmail, codeHash, expiresAt]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      code,
+      email: normalizedEmail,
+      expiresAt: expiresAt.toISOString(),
+      user: mapUser(user)
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function confirmEmailVerificationCode(userId: number, email: string, code: string) {
+  await initializeAuthSchema();
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedCode = code.trim();
+  const codeHash = hashEmailVerificationCode(userId, normalizedEmail, normalizedCode);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const existingEmail = await client.query<Pick<UserRow, 'id' | 'user_id'> & { id: number }>(
+      `
+        SELECT id, user_id
+        FROM users
+        WHERE LOWER(email) = LOWER($1)
+          AND id <> $2
+        LIMIT 1
+      `,
+      [normalizedEmail, userId]
+    );
+
+    if (existingEmail.rowCount) {
+      const error = new Error('Email already exists.');
+      error.name = 'DuplicateEmailError';
+      throw error;
+    }
+
+    const codeResult = await client.query<{ id: string }>(
+      `
+        SELECT id::text
+        FROM email_verification_codes
+        WHERE user_id = $1
+          AND LOWER(email) = LOWER($2)
+          AND code_hash = $3
+          AND used_at IS NULL
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [userId, normalizedEmail, codeHash]
+    );
+
+    const verificationCode = codeResult.rows[0];
+
+    if (!verificationCode) {
+      await client.query('COMMIT');
+      return null;
+    }
+
+    const updatedUserResult = await client.query<UserRow>(
+      `
+        UPDATE users
+        SET email = $2
+        WHERE id = $1
+        RETURNING id, user_id, email, full_name, created_at, password_hash, role
+      `,
+      [userId, normalizedEmail]
+    );
+
+    await client.query(
+      `
+        UPDATE email_verification_codes
+        SET used_at = NOW()
+        WHERE user_id = $1
+          AND used_at IS NULL
+      `,
+      [userId]
     );
 
     await client.query('COMMIT');
@@ -402,6 +642,7 @@ export async function getUserForSessionToken(token: string) {
       SELECT
         u.id,
         u.user_id,
+        u.email,
         u.full_name,
         u.created_at,
         u.password_hash,
@@ -449,7 +690,7 @@ export async function listUsers() {
 
   const result = await pool.query<UserRow>(
     `
-      SELECT id, user_id, full_name, created_at, password_hash, role
+      SELECT id, user_id, email, full_name, created_at, password_hash, role
       FROM users
       ORDER BY created_at ASC
     `
@@ -466,7 +707,7 @@ export async function updateUserRole(userId: number, role: UserRole) {
       UPDATE users
       SET role = $2
       WHERE id = $1
-      RETURNING id, user_id, full_name, created_at, password_hash, role
+      RETURNING id, user_id, email, full_name, created_at, password_hash, role
     `,
     [userId, role]
   );
@@ -476,4 +717,8 @@ export async function updateUserRole(userId: number, role: UserRole) {
 
 export function isDuplicateUserIdError(error: unknown) {
   return error instanceof Error && error.name === 'DuplicateUserIdError';
+}
+
+export function isDuplicateEmailError(error: unknown) {
+  return error instanceof Error && error.name === 'DuplicateEmailError';
 }

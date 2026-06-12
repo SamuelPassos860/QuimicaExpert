@@ -6,6 +6,10 @@ import { useLanguage } from '../i18n';
 const EVENT_TYPE_LABELS: Record<AuditLogEventType, string> = {
   login: 'User Login',
   logout: 'User Logout',
+  email_confirmed: 'Email Confirmed',
+  user_created: 'User Created',
+  analysis_field_changed: 'Analysis Step',
+  analysis_report_printed: 'Report Printed',
   password_reset_requested: 'Password Reset Requested',
   password_reset_completed: 'Password Reset Completed',
   compound_saved: 'Compound Saved',
@@ -13,13 +17,20 @@ const EVENT_TYPE_LABELS: Record<AuditLogEventType, string> = {
   pdf_exported: 'PDF Exported'
 };
 
+const ANALYTICAL_AUDIT_EVENTS = new Set<AuditLogEventType>([
+  'analysis_field_changed',
+  'analysis_report_printed',
+  'user_created',
+  'compound_saved'
+]);
+
 const AUDIT_TEXT = {
   en: {
-    title: 'Audit Logs',
-    oversight: 'Administrative Oversight',
-    description: 'Review authentication events, saved compound activity, and spectrophotometry report exports across the platform.',
-    scope: 'Audit Scope',
-    scopeDescription: 'This timeline captures who accessed the platform, who saved or deleted compounds, and who generated spectrophotometry reports.',
+    title: 'Analytical Audit Trail',
+    oversight: 'Analysis Traceability',
+    description: 'Follow the analyst workflow field by field until the final report is printed.',
+    scope: 'Controlled Flow',
+    scopeDescription: 'This timeline focuses on analytical changes, printed reports, user creation, and saved compound control.',
     eventType: 'Event Type',
     allEvents: 'All events',
     userSearch: 'User Search',
@@ -38,6 +49,10 @@ const AUDIT_TEXT = {
     selectLabels: {
       login: 'Login',
       logout: 'Logout',
+      email_confirmed: 'Email confirmed',
+      user_created: 'User created',
+      analysis_field_changed: 'Analysis step',
+      analysis_report_printed: 'Report printed',
       password_reset_requested: 'Password reset requested',
       password_reset_completed: 'Password reset completed',
       compound_saved: 'Compound saved',
@@ -68,6 +83,7 @@ const AUDIT_TEXT = {
     eventLabels: {
       login: 'Login do Usuário',
       logout: 'Logout do Usuário',
+      email_confirmed: 'Email Confirmado',
       password_reset_requested: 'Redefinição de Senha Solicitada',
       password_reset_completed: 'Redefinição de Senha Concluída',
       compound_saved: 'Composto Salvo',
@@ -77,6 +93,7 @@ const AUDIT_TEXT = {
     selectLabels: {
       login: 'Login',
       logout: 'Logout',
+      email_confirmed: 'Email confirmado',
       password_reset_requested: 'Redefinição de senha solicitada',
       password_reset_completed: 'Redefinição de senha concluída',
       compound_saved: 'Composto salvo',
@@ -107,6 +124,7 @@ const AUDIT_TEXT = {
     eventLabels: {
       login: 'Inicio de Sesión',
       logout: 'Cierre de Sesión',
+      email_confirmed: 'Email Confirmado',
       password_reset_requested: 'Restablecimiento de Contraseña Solicitado',
       password_reset_completed: 'Restablecimiento de Contraseña Completado',
       compound_saved: 'Compuesto Guardado',
@@ -116,6 +134,7 @@ const AUDIT_TEXT = {
     selectLabels: {
       login: 'Inicio de sesión',
       logout: 'Cierre de sesión',
+      email_confirmed: 'Email confirmado',
       password_reset_requested: 'Restablecimiento solicitado',
       password_reset_completed: 'Restablecimiento completado',
       compound_saved: 'Compuesto guardado',
@@ -140,7 +159,44 @@ function getAuditTargetLabel(log: AuditLog, fallback: string) {
   return log.resourceKey || fallback;
 }
 
-export default function AuditLogs() {
+function getAuditSentence(log: AuditLog) {
+  const actor = log.actor.fullName || log.actor.userId;
+  const fieldLabel = typeof log.metadata.fieldLabel === 'string' ? log.metadata.fieldLabel : 'field';
+  const previousValue = typeof log.metadata.previousValue === 'string' ? log.metadata.previousValue : '';
+  const nextValue = typeof log.metadata.nextValue === 'string' ? log.metadata.nextValue : '';
+  const compoundName = typeof log.metadata.compoundName === 'string' ? log.metadata.compoundName : '';
+  const createdFullName = typeof log.metadata.createdFullName === 'string' ? log.metadata.createdFullName : '';
+
+  switch (log.eventType) {
+    case 'analysis_field_changed':
+      if (previousValue && nextValue) {
+        return `${actor} alterou ${fieldLabel} de "${previousValue}" para "${nextValue}".`;
+      }
+
+      if (previousValue && !nextValue) {
+        return `${actor} apagou o valor de ${fieldLabel}, antes "${previousValue}".`;
+      }
+
+      return `${actor} preencheu ${fieldLabel} com "${nextValue}".`;
+    case 'analysis_report_printed':
+    case 'pdf_exported':
+      return `${actor} imprimiu o relatorio analitico${compoundName ? ` de ${compoundName}` : ''}.`;
+    case 'compound_saved':
+      return `${actor} salvou o composto ${compoundName || log.resourceKey || 'sem identificacao'}.`;
+    case 'compound_deleted':
+      return `${actor} apagou o composto ${compoundName || log.resourceKey || 'sem identificacao'}.`;
+    case 'user_created':
+      return `${actor} criou o usuario ${createdFullName || log.resourceKey || 'sem identificacao'}.`;
+    default:
+      return `${actor}: ${log.eventType}.`;
+  }
+}
+
+interface AuditLogsProps {
+  globalSearch?: { query: string; nonce: number };
+}
+
+export default function AuditLogs({ globalSearch }: AuditLogsProps) {
   const { language } = useLanguage();
   const text = AUDIT_TEXT[language];
   const [filters, setFilters] = useState<AuditLogFilters>({
@@ -151,6 +207,11 @@ export default function AuditLogs() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setFilters((current) => ({ ...current, userSearch: globalSearch.query }));
+  }, [globalSearch?.nonce]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -197,6 +258,8 @@ export default function AuditLogs() {
     return () => controller.abort();
   }, [deferredUserSearch, filters.eventType, text.loadError]);
 
+  const visibleLogs = logs.filter((log) => ANALYTICAL_AUDIT_EVENTS.has(log.eventType));
+
   return (
     <div className="space-y-8 sm:space-y-10">
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
@@ -239,13 +302,10 @@ export default function AuditLogs() {
               className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
             >
               <option value="">{text.allEvents}</option>
-              <option value="login">{text.selectLabels.login}</option>
-              <option value="logout">{text.selectLabels.logout}</option>
-              <option value="password_reset_requested">{text.selectLabels.password_reset_requested}</option>
-              <option value="password_reset_completed">{text.selectLabels.password_reset_completed}</option>
+              <option value="analysis_field_changed">{EVENT_TYPE_LABELS.analysis_field_changed}</option>
+              <option value="analysis_report_printed">{EVENT_TYPE_LABELS.analysis_report_printed}</option>
+              <option value="user_created">{EVENT_TYPE_LABELS.user_created}</option>
               <option value="compound_saved">{text.selectLabels.compound_saved}</option>
-              <option value="compound_deleted">{text.selectLabels.compound_deleted}</option>
-              <option value="pdf_exported">{text.selectLabels.pdf_exported}</option>
             </select>
           </label>
 
@@ -275,28 +335,28 @@ export default function AuditLogs() {
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
             {text.loading}
           </div>
-        ) : logs.length === 0 ? (
+        ) : visibleLogs.length === 0 ? (
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
             {text.empty}
           </div>
         ) : (
           <div className="space-y-4">
-            {logs.map((log) => {
+            {visibleLogs.map((log) => {
               const metadataEntries = formatMetadata(log.metadata);
 
               return (
                 <article
                   key={log.id}
-                  className="rounded-[1.6rem] p-5 sm:p-6 bg-white/[0.03] border border-white/8 space-y-4"
+                  className="rounded-2xl p-4 sm:p-5 bg-white/[0.03] border border-white/8 border-l-4 border-l-primary/60 space-y-4"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
+                        <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
                           <ScrollText size={18} />
                         </div>
                         <div>
-                          <p className="text-white text-lg font-semibold">{text.eventLabels[log.eventType]}</p>
+                          <p className="text-white text-base sm:text-lg font-semibold leading-relaxed">{getAuditSentence(log)}</p>
                           <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                             {log.resourceType} {log.resourceKey ? `• ${log.resourceKey}` : ''}
                           </p>
@@ -318,7 +378,7 @@ export default function AuditLogs() {
                     </div>
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                       <p className="text-white/30 font-mono uppercase tracking-widest">{text.action}</p>
-                      <p className="text-white mt-2 font-semibold">{text.eventLabels[log.eventType]}</p>
+                      <p className="text-white mt-2 font-semibold">{text.eventLabels[log.eventType] ?? EVENT_TYPE_LABELS[log.eventType]}</p>
                     </div>
                     <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                       <p className="text-white/30 font-mono uppercase tracking-widest">{text.target}</p>

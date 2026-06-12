@@ -10,6 +10,7 @@ interface ReportsProps {
   currentUser: AuthUser;
   initialProjectKey?: string;
   initialProjectLabel?: string;
+  globalSearch?: { query: string; nonce: number };
 }
 
 const REPORTS_TEXT = {
@@ -19,7 +20,7 @@ const REPORTS_TEXT = {
     description: 'Reopen previously generated spectrophotometry reports without rebuilding the calculation.',
     adminScope: 'Administrators can review the complete shared archive.',
     userScope: 'This view is scoped to the reports generated from your account.',
-    searchPlaceholder: 'Search inside selected project...',
+    searchPlaceholder: 'Search reports, projects, compounds or CAS...',
     selectProject: 'Select a project',
     reports: 'reports',
     lastResult: 'Last result',
@@ -47,7 +48,7 @@ const REPORTS_TEXT = {
     description: 'Reabra relatórios de espectrofotometria gerados anteriormente sem refazer o cálculo.',
     adminScope: 'Administradores podem revisar o arquivo compartilhado completo.',
     userScope: 'Esta visualização mostra apenas os relatórios gerados pela sua conta.',
-    searchPlaceholder: 'Pesquisar dentro do projeto selecionado...',
+    searchPlaceholder: 'Pesquisar relatórios, projetos, compostos ou CAS...',
     selectProject: 'Selecione um projeto',
     reports: 'relatórios',
     lastResult: 'Último resultado',
@@ -75,7 +76,7 @@ const REPORTS_TEXT = {
     description: 'Reabre informes de espectrofotometría generados anteriormente sin reconstruir el cálculo.',
     adminScope: 'Los administradores pueden revisar el archivo compartido completo.',
     userScope: 'Esta vista muestra solo los informes generados desde tu cuenta.',
-    searchPlaceholder: 'Buscar dentro del proyecto seleccionado...',
+    searchPlaceholder: 'Buscar informes, proyectos, compuestos o CAS...',
     selectProject: 'Selecciona un proyecto',
     reports: 'informes',
     lastResult: 'Último resultado',
@@ -157,7 +158,7 @@ function getReportAnalysis(report: StoredReport) {
   return analysisParts.join(' - ').trim() || report.source || 'Analytical report';
 }
 
-export default function Reports({ currentUser, initialProjectKey, initialProjectLabel }: ReportsProps) {
+export default function Reports({ currentUser, initialProjectKey, initialProjectLabel, globalSearch }: ReportsProps) {
   const { language } = useLanguage();
   const text = REPORTS_TEXT[language];
   const [query, setQuery] = useState('');
@@ -167,6 +168,11 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setQuery(globalSearch.query);
+  }, [globalSearch?.nonce]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -255,24 +261,30 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
   }, [initialProjectKey, initialProjectLabel, projectOptions]);
 
   const visibleReports = useMemo(() => {
-    if (!selectedProjectKey) return [];
-
     const normalizedQuery = deferredQuery.trim().toLowerCase();
 
     return reports.filter((report) => {
       const project = getReportProject(report);
-      if (project.key !== selectedProjectKey) return false;
+      if (selectedProjectKey && project.key !== selectedProjectKey) return false;
       if (!normalizedQuery) return true;
 
       return [
         report.reportId,
+        report.projectId || '',
+        report.projectName || '',
+        project.key,
+        project.label,
         report.compoundName,
         report.casId,
+        report.lambdaMax,
+        report.solvent,
         report.source,
         report.generatedByName,
         report.generatedByUserId,
+        report.owner.fullName,
+        report.owner.userId,
         getReportAnalysis(report)
-      ].some((value) => value.toLowerCase().includes(normalizedQuery));
+      ].some((value) => String(value).toLowerCase().includes(normalizedQuery));
     });
   }, [deferredQuery, reports, selectedProjectKey]);
 
@@ -411,13 +423,13 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
           </div>
         )}
 
-        {!isLoading && !error && reports.length > 0 && !selectedProjectKey && (
+        {!isLoading && !error && reports.length > 0 && !selectedProjectKey && !deferredQuery.trim() && (
           <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
             {text.selectProjectEmpty}
           </div>
         )}
 
-        {!isLoading && !error && selectedProjectKey && visibleReports.length === 0 && (
+        {!isLoading && !error && (selectedProjectKey || deferredQuery.trim()) && visibleReports.length === 0 && (
           <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
             {text.noProjectReports}
           </div>

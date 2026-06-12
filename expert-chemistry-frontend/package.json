@@ -9,7 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "email:test": "tsx server/scripts/test-email.ts",
+    "users:missing-email": "tsx server/scripts/set-user-email.ts --list-missing",
+    "users:set-email": "tsx server/scripts/set-user-email.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

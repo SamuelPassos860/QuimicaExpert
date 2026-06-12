@@ -1,4 +1,5 @@
 import express from 'express';
+import './config.js';
 import adminRouter from './routes/admin.js';
 import auditRouter from './routes/audit.js';
 import authRouter from './routes/auth.js';

@@ -29,7 +29,6 @@ interface AnalyticalProject {
   compound: string;
   matrix: string;
   wavelength: string;
-  status: 'Ready' | 'Draft' | 'Template';
   description: string;
   inputs: string[];
   methods: ProjectMethod[];
@@ -44,7 +43,6 @@ const initialProjectLibrary: AnalyticalProject[] = [
     compound: 'Caffeine',
     matrix: 'Beverages and extracts',
     wavelength: '273 nm',
-    status: 'Ready',
     description: 'Project for quantifying caffeine by UV reading using a known standard, sample absorbance and dilution factor.',
     inputs: ['Standard absorbance', 'Standard concentration', 'Sample absorbance', 'Dilution'],
     methods: [
@@ -57,7 +55,6 @@ const initialProjectLibrary: AnalyticalProject[] = [
     compound: 'Total iron',
     matrix: 'Water and effluents',
     wavelength: '510 nm',
-    status: 'Draft',
     description: 'Project for colorimetric methods with blank correction, analytical curve and corrected absorbance reading.',
     inputs: ['Blank absorbance', 'Sample absorbance', 'Curve points', 'Final volume'],
     methods: [
@@ -70,7 +67,6 @@ const initialProjectLibrary: AnalyticalProject[] = [
     compound: 'Blue dye',
     matrix: 'Finished product',
     wavelength: '620 nm',
-    status: 'Template',
     description: 'Project for a simple standard-to-sample comparison with transmittance converted into absorbance.',
     inputs: ['Transmittance', 'Calculated absorbance', 'Nominal concentration', 'Wavelength'],
     methods: [
@@ -89,7 +85,6 @@ const projectMethodTypes: ProjectMethodType[] = [
 ];
 
 const methodTabs: MethodTab[] = ['lambert-beer', 'linear-regression'];
-const projectStatuses: AnalyticalProject['status'][] = ['Ready', 'Draft', 'Template'];
 
 function cloneInitialProjects() {
   return initialProjectLibrary.map((project) => ({
@@ -158,8 +153,6 @@ function normalizeSavedMethod(value: unknown): ProjectMethod | null {
 function normalizeSavedProject(value: unknown): AnalyticalProject | null {
   if (!isRecord(value)) return null;
 
-  const status = value.status;
-
   if (
     typeof value.id !== 'string' ||
     typeof value.compound !== 'string' ||
@@ -175,7 +168,6 @@ function normalizeSavedProject(value: unknown): AnalyticalProject | null {
     compound: value.compound,
     matrix: value.matrix,
     wavelength: value.wavelength,
-    status: projectStatuses.includes(status as AnalyticalProject['status']) ? status as AnalyticalProject['status'] : 'Draft',
     description: value.description,
     inputs: normalizeStringArray(value.inputs),
     methods: Array.isArray(value.methods)
@@ -892,6 +884,7 @@ function openPrintableProjectMethodReport(payload: {
 
 interface MethodsProps {
   currentUser: AuthUser;
+  globalSearch?: { query: string; nonce: number };
 }
 
 const METHODS_TEXT = {
@@ -1158,7 +1151,7 @@ const METHODS_TEXT = {
   }
 };
 
-export default function Methods({ currentUser }: MethodsProps) {
+export default function Methods({ currentUser, globalSearch }: MethodsProps) {
   const { language } = useLanguage();
   const text = METHODS_TEXT[language];
   const initialStoredProjectsRef = useRef<AnalyticalProject[] | null>(null);
@@ -1193,6 +1186,13 @@ export default function Methods({ currentUser }: MethodsProps) {
   const [sequenceStart, setSequenceStart] = useState('0');
   const [sequenceStep, setSequenceStep] = useState('1');
   const [sequenceCount, setSequenceCount] = useState('3');
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setActiveTab('library');
+    setProjectMode('workspace');
+    setProjectSearch(globalSearch.query);
+  }, [globalSearch?.nonce]);
   const [methodInputs, setMethodInputs] = useState({
     sampleAbsorbance: '',
     standardAbsorbance: '',
@@ -1358,7 +1358,6 @@ export default function Methods({ currentUser }: MethodsProps) {
       compound,
       matrix: 'Not defined',
       wavelength: 'Not defined',
-      status: 'Draft',
       description: newProjectDescription.trim() || 'Project created to configure custom analytical methods.',
       inputs: ['Absorbance', 'Transmittance', 'Known concentration'],
       methods: [
@@ -2782,11 +2781,6 @@ export default function Methods({ currentUser }: MethodsProps) {
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-white font-semibold leading-tight">{project.compound}</h3>
                             <span className="text-[8px] font-mono text-primary bg-primary/10 border border-primary/20 py-0.5 px-2 rounded-full uppercase tracking-widest">{project.id}</span>
-                            <span className={`text-[8px] font-mono uppercase tracking-widest ${
-                              project.status === 'Ready' ? 'text-green-300' : project.status === 'Draft' ? 'text-yellow-300' : 'text-primary'
-                            }`}>
-                              {project.status}
-                            </span>
                           </div>
                           <p className="text-xs text-white/35 mt-2 line-clamp-2">{project.description}</p>
                           <div className="flex flex-wrap items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-white/25">

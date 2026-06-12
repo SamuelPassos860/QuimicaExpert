@@ -22,6 +22,7 @@ import type { AuthUser } from '../types/auth';
 interface DashboardProps {
   currentUser: AuthUser;
   onOpenView: (view: View, options?: { spectrophotometryTab?: 'calculate' | 'saved'; reportsProjectKey?: string; reportsProjectLabel?: string }) => void;
+  globalSearch?: { query: string; nonce: number };
 }
 
 interface DashboardSummary {
@@ -345,7 +346,7 @@ function getReportsViewProjectKey(report: DashboardSummary['recentReports'][numb
     : label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || label;
 }
 
-export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
+export default function Dashboard({ currentUser, onOpenView, globalSearch }: DashboardProps) {
   const { language } = useLanguage();
   const text = DASHBOARD_TEXT[language];
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -355,6 +356,11 @@ export default function Dashboard({ currentUser, onOpenView }: DashboardProps) {
   const [isDeletingProjectKey, setIsDeletingProjectKey] = useState<string | null>(null);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setProjectSearchQuery(globalSearch.query);
+  }, [globalSearch?.nonce]);
 
   useEffect(() => {
     const controller = new AbortController();

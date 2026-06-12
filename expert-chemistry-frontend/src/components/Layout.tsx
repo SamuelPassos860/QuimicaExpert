@@ -17,6 +17,7 @@ interface LayoutProps {
   activeView: View;
   contentKey: string;
   onViewChange: (view: View) => void;
+  onGlobalSearch: (query: string) => void;
   onLogout: () => void;
   user: {
     name: string;
@@ -58,11 +59,12 @@ function getNavLabelKey(view: View) {
   }
 }
 
-export default function Layout({ children, activeView, contentKey, onViewChange, onLogout, user }: LayoutProps) {
+export default function Layout({ children, activeView, contentKey, onViewChange, onGlobalSearch, onLogout, user }: LayoutProps) {
   const { language, setLanguage, t } = useLanguage();
   const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [isHelpOpen, setHelpOpen] = useState(false);
   const [isLanguageOpen, setLanguageOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const initials = user.name
     .split(' ')
     .filter(Boolean)
@@ -94,6 +96,17 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
   };
 
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user.userRole));
+
+  const handleGlobalSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = globalSearchQuery.trim();
+
+    if (!query) return;
+
+    setHelpOpen(false);
+    setLanguageOpen(false);
+    onGlobalSearch(query);
+  };
 
   return (
     <div className="min-h-screen bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
@@ -226,14 +239,16 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="relative flex-1 group min-w-0">
+            <form onSubmit={handleGlobalSearch} className="relative flex-1 group min-w-0">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary transition-all group-focus-within:scale-110" />
               <input 
-                type="text" 
+                type="search"
+                value={globalSearchQuery}
+                onChange={(event) => setGlobalSearchQuery(event.target.value)}
                 placeholder={t('layout.search.placeholder')} 
                 className="w-full bg-white/5 border border-white/5 hover:border-white/10 focus:border-primary/20 rounded-xl py-3 pl-12 pr-4 text-sm outline-none transition-all placeholder:text-white/20 focus:bg-white/[0.08] focus:shadow-[0_0_40px_rgba(167,200,255,0.05)]"
               />
-            </div>
+            </form>
           </div>
 
           <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full lg:w-auto">
