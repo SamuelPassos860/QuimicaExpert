@@ -64,4 +64,11 @@ export interface AnalysisAuditBody {
   compoundName?: string;
   casId?: string;
   action?: 'changed' | 'cleared' | 'filled';
+  workflow?: string;
+  projectId?: string;
+  projectName?: string;
+  methodId?: string;
+  methodName?: string;
+  stepDescription?: string;
+  analysisRunId?: string;
 }

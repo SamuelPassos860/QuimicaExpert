@@ -9,7 +9,6 @@ import AuthView from './views/Auth';
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Reports = lazy(() => import('./views/Reports'));
 const Methods = lazy(() => import('./views/Methods'));
-const Settings = lazy(() => import('./views/Settings'));
 const Spectrophotometry = lazy(() => import('./views/Spectrophotometry'));
 const UserManagement = lazy(() => import('./views/UserManagement'));
 const AuditLogs = lazy(() => import('./views/AuditLogs'));
@@ -106,7 +105,7 @@ const ROLE_DEFAULT_VIEW: Record<AuthUser['role'], View> = {
 };
 
 const ROLE_ALLOWED_VIEWS: Record<AuthUser['role'], View[]> = {
-  admin: ['dashboard', 'spectrophotometry', 'reports', 'methods', 'user-management', 'audit-logs', 'settings'],
+  admin: ['dashboard', 'spectrophotometry', 'reports', 'methods', 'user-management', 'audit-logs'],
   analyst: ['methods', 'reports', 'audit-logs']
 };
 
@@ -505,7 +504,6 @@ function AppContent() {
       case 'spectrophotometry': return <Spectrophotometry currentUser={user} initialTab={spectrophotometryInitialTab} globalSearch={getGlobalSearchForView('spectrophotometry')} />;
       case 'reports': return <Reports currentUser={user} initialProjectKey={reportsInitialProjectKey} initialProjectLabel={reportsInitialProjectLabel} globalSearch={getGlobalSearchForView('reports')} />;
       case 'methods': return <Methods currentUser={user} globalSearch={getGlobalSearchForView('methods')} />;
-      case 'settings': return <Settings />;
       case 'user-management': return <UserManagement currentUser={user} globalSearch={getGlobalSearchForView('user-management')} />;
       case 'audit-logs': return <AuditLogs globalSearch={getGlobalSearchForView('audit-logs')} />;
       default: return renderViewByKey(user, ROLE_DEFAULT_VIEW[user.role]);

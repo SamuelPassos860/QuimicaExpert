@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createAuditLog } from '../services/audit.js';
-import type { AnalysisAuditBody, ReportExportAuditBody } from '../types/audit.js';
+import type { AnalysisAuditBody } from '../types/audit.js';
 
 const router = Router();
 
@@ -10,42 +10,13 @@ function normalizeText(value: unknown) {
 
 router.post('/report-exports', async (request, response) => {
   const currentUser = response.locals.currentUser;
-  const body = (request.body ?? {}) as ReportExportAuditBody;
 
   if (!currentUser) {
     response.status(401).json({ error: 'Authentication required.' });
     return;
   }
 
-  try {
-    await createAuditLog({
-        actorUserId: currentUser.id,
-        actorUserIdentifier: currentUser.userId,
-        actorFullName: currentUser.fullName,
-        eventType: 'analysis_report_printed',
-        resourceType: 'spectrophotometry_report',
-      resourceKey: body.casId?.trim() || null,
-      metadata: {
-        reportId: body.reportId?.trim() || '',
-        cas: body.casId?.trim() || 'N/A',
-        compoundName: body.compoundName?.trim() || 'Not identified',
-        lambdaMax: body.lambdaMax?.trim() || 'N/A',
-        source: body.source?.trim() || 'Manual',
-        epsilon: Number(body.epsilonValue ?? 0),
-        pathLength: Number(body.pathLengthValue ?? 0),
-        concentration: Number(body.concentrationValue ?? 0),
-        absorbance: Number(body.absorbance ?? 0),
-        generatedAt: body.generatedAt?.trim() || '',
-        generatedByName: body.generatedByName?.trim() || currentUser.fullName,
-        generatedByUserId: body.generatedByUserId?.trim() || currentUser.userId
-      }
-    });
-
-    response.status(201).json({ ok: true });
-  } catch (error) {
-    console.error('Failed to record PDF export audit log:', error);
-    response.status(500).json({ error: 'Failed to record PDF export audit log.' });
-  }
+  response.status(204).send();
 });
 
 router.post('/analysis-events', async (request, response) => {
@@ -63,6 +34,13 @@ router.post('/analysis-events', async (request, response) => {
   const nextValue = normalizeText(body.nextValue);
   const compoundName = normalizeText(body.compoundName);
   const casId = normalizeText(body.casId);
+  const workflow = normalizeText(body.workflow);
+  const projectId = normalizeText(body.projectId);
+  const projectName = normalizeText(body.projectName);
+  const methodId = normalizeText(body.methodId);
+  const methodName = normalizeText(body.methodName);
+  const stepDescription = normalizeText(body.stepDescription);
+  const analysisRunId = normalizeText(body.analysisRunId);
   const action = body.action === 'cleared' || body.action === 'filled' ? body.action : 'changed';
 
   if (!fieldLabel || previousValue === nextValue) {
@@ -85,7 +63,14 @@ router.post('/analysis-events', async (request, response) => {
         nextValue,
         compoundName: compoundName || 'Not identified',
         cas: casId || 'N/A',
-        action
+        action,
+        workflow,
+        projectId,
+        projectName,
+        methodId,
+        methodName,
+        stepDescription,
+        analysisRunId
       }
     });
 

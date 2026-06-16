@@ -35,3 +35,20 @@ export interface AuditLogFilters {
 }
 
 export type ReportExportAuditPayload = ReportPayload;
+
+export interface AnalysisAuditPayload {
+  fieldKey?: string;
+  fieldLabel?: string;
+  previousValue?: string;
+  nextValue?: string;
+  compoundName?: string;
+  casId?: string;
+  action?: 'changed' | 'cleared' | 'filled';
+  workflow?: string;
+  projectId?: string;
+  projectName?: string;
+  methodId?: string;
+  methodName?: string;
+  stepDescription?: string;
+  analysisRunId?: string;
+}

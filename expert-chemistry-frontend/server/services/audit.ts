@@ -27,6 +27,12 @@ const listAuditLogsQuery = `
       $3 = ''
       OR actor_user_identifier ILIKE $3
       OR actor_full_name ILIKE $3
+      OR resource_key ILIKE $3
+      OR event_type ILIKE $3
+      OR resource_type ILIKE $3
+      OR metadata::text ILIKE $3
+      OR REPLACE(metadata::text, '-', ' ') ILIKE REPLACE($3, '-', ' ')
+      OR REPLACE(metadata::text, ' ', '-') ILIKE REPLACE($3, ' ', '-')
     )
   ORDER BY created_at DESC
   LIMIT $4

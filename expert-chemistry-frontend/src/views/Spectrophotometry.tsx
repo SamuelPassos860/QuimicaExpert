@@ -1,13 +1,15 @@
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, FlaskConical, Search, Sigma, Trash2, Waves } from 'lucide-react';
-import type { ReportExportAuditPayload } from '../types/audit';
+import type { AnalysisAuditPayload, ReportExportAuditPayload } from '../types/audit';
 import type { AuthUser } from '../types/auth';
 import { useLanguage } from '../i18n';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
 type SourceType = 'Bank' | 'PhotochemCAD' | 'Manual';
 type TabType = 'calculate' | 'saved';
+
+const createAnalysisRunId = () => `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 interface SavedCompoundRecord {
   id: string;
@@ -438,6 +440,7 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
   const [sampleAbsorbance, setSampleAbsorbance] = useState('0');
   const [blankAbsorbance, setBlankAbsorbance] = useState('0');
   const analysisFieldStartValues = useRef<Record<string, string>>({});
+  const analysisRunIdRef = useRef(createAnalysisRunId());
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -668,7 +671,13 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
     return 'changed';
   };
 
-  const recordAnalysisChange = async (fieldKey: string, fieldLabel: string, previousValue: string, nextValue: string) => {
+  const recordAnalysisChange = async (
+    fieldKey: string,
+    fieldLabel: string,
+    previousValue: string,
+    nextValue: string,
+    overrides?: Partial<AnalysisAuditPayload>
+  ) => {
     const normalizedPreviousValue = String(previousValue ?? '').trim();
     const normalizedNextValue = String(nextValue ?? '').trim();
 
@@ -682,13 +691,18 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          analysisRunId: analysisRunIdRef.current,
           fieldKey,
           fieldLabel,
           previousValue: normalizedPreviousValue,
           nextValue: normalizedNextValue,
           compoundName: compoundName || 'Not identified',
           casId: casId || 'N/A',
-          action: getAnalysisAction(normalizedPreviousValue, normalizedNextValue)
+          workflow: 'Spectrophotometry',
+          methodName: calcMode === 'absorbance' ? 'Lambert-Beer absorbance' : 'Lambert-Beer concentration',
+          stepDescription: `${fieldLabel} changed from "${normalizedPreviousValue || '-'}" to "${normalizedNextValue || '-'}.`,
+          action: getAnalysisAction(normalizedPreviousValue, normalizedNextValue),
+          ...overrides
         })
       });
     } catch (error) {
@@ -704,6 +718,10 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
     const previousValue = analysisFieldStartValues.current[fieldKey] ?? '';
     delete analysisFieldStartValues.current[fieldKey];
     void recordAnalysisChange(fieldKey, fieldLabel, previousValue, nextValue);
+  };
+
+  const startNextAnalysisRun = () => {
+    analysisRunIdRef.current = createAnalysisRunId();
   };
 
   const resetManualEntry = () => {
@@ -811,12 +829,14 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
 
     await logReportExport(payload);
     openPrintableReport(payload);
+    startNextAnalysisRun();
   };
 
   const printCurrentReport = async () => {
     const payload = createCurrentReportPayload();
     await logReportExport(payload);
     openPrintableReport(payload);
+    startNextAnalysisRun();
   };
 
   const exportSavedCompoundReport = (compound: SavedCompoundRecord) => {

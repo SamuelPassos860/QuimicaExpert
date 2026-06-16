@@ -24,7 +24,6 @@ type TranslationKey =
   | 'nav.methods'
   | 'nav.user-management'
   | 'nav.audit-logs'
-  | 'nav.settings'
   | 'faq.reports.question'
   | 'faq.reports.answer'
   | 'faq.result.question'
@@ -67,7 +66,6 @@ const TRANSLATIONS: Record<Language, TranslationDictionary> = {
     'nav.methods': 'Methods',
     'nav.user-management': 'User Management',
     'nav.audit-logs': 'Audit Logs',
-    'nav.settings': 'Settings',
     'faq.reports.question': 'I cannot see the generated reports. What should I do?',
     'faq.reports.answer': 'Open Reports and check that the correct project is selected. On the Dashboard, use the project cards to filter results before opening the reports view.',
     'faq.result.question': 'The spectrophotometry result looks incorrect.',
@@ -99,7 +97,6 @@ const TRANSLATIONS: Record<Language, TranslationDictionary> = {
     'nav.methods': 'Métodos',
     'nav.user-management': 'Gerenciamento de Usuários',
     'nav.audit-logs': 'Registros de Auditoria',
-    'nav.settings': 'Configurações',
     'faq.reports.question': 'Não consigo ver os relatórios gerados. O que devo fazer?',
     'faq.reports.answer': 'Abra Relatórios e confira se o projeto correto está selecionado. Na Dashboard, use os cards de projeto para filtrar os resultados antes de abrir a tela de relatórios.',
     'faq.result.question': 'O resultado da espectrofotometria parece incorreto.',
@@ -131,7 +128,6 @@ const TRANSLATIONS: Record<Language, TranslationDictionary> = {
     'nav.methods': 'Métodos',
     'nav.user-management': 'Gestión de Usuarios',
     'nav.audit-logs': 'Registros de Auditoría',
-    'nav.settings': 'Configuración',
     'faq.reports.question': 'No puedo ver los informes generados. ¿Qué debo hacer?',
     'faq.reports.answer': 'Abre Informes y verifica que el proyecto correcto esté seleccionado. En Dashboard, usa las tarjetas de proyecto para filtrar los resultados antes de abrir la vista de informes.',
     'faq.result.question': 'El resultado de espectrofotometría parece incorrecto.',

@@ -373,7 +373,7 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
       </div>
 
       {!isLoading && !error && projectOptions.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-flow-col auto-cols-[minmax(220px,260px)] sm:auto-cols-[minmax(240px,280px)] gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-2">
           {projectOptions.map((project) => {
             const isSelected = selectedProjectKey === project.key;
 

@@ -1,7 +1,6 @@
 import { 
   LayoutDashboard, 
   FileText, 
-  Settings as SettingsIcon,
   Beaker,
   Waves,
   ShieldCheck,
@@ -14,7 +13,6 @@ export type View =
   | 'reports'
   | 'methods'
   | 'spectrophotometry'
-  | 'settings'
   | 'login'
   | 'user-management'
   | 'audit-logs';
@@ -35,6 +33,4 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'audit-logs', label: 'Audit Logs', icon: ScrollText, roles: ['admin', 'analyst'] },
 ];
 
-export const OTHER_ITEMS: NavItem[] = [
-  { id: 'settings', label: 'Settings', icon: SettingsIcon, roles: ['admin'] },
-];
+export const OTHER_ITEMS: NavItem[] = [];

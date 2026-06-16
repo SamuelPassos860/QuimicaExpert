@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ArrowLeft, Calculator, Copy, Sigma, Waves, Link, Unlink, FileUp, RotateCcw, TrendingUp, Plus, Trash2, CheckCircle2, Circle, Download, Sparkles, FlaskConical, Search } from 'lucide-react';
 import type { AuthUser } from '../types/auth';
+import type { AnalysisAuditPayload } from '../types/audit';
 import { useLanguage } from '../i18n';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
@@ -8,6 +9,8 @@ type MethodTab = 'lambert-beer' | 'linear-regression';
 type ProjectMethodType = 'direct-proportion' | 'blank-correction' | 'transmittance-absorbance' | 'calibration-curve' | 'custom-formula';
 type MethodInputKey = 'sampleAbsorbance' | 'standardAbsorbance' | 'standardConcentration' | 'concentrationUnit' | 'blankAbsorbance' | 'transmittance';
 type ProjectReadingTarget = MethodInputKey | `custom:${string}`;
+
+const createAnalysisRunId = () => `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 interface FormulaConstant {
   name: string;
@@ -1221,6 +1224,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
   const portRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const regressionFileInputRef = useRef<HTMLInputElement>(null);
+  const analysisFieldStartValues = useRef<Record<string, string>>({});
+  const analysisRunIdRef = useRef(createAnalysisRunId());
   const skipNextSampleScanSyncRef = useRef(false);
 
   // Linear regression states
@@ -1342,7 +1347,17 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
 
   const addPoint = () => {
     if (newX.trim() && newY.trim()) {
-      setRegressionPoints([...regressionPoints, { x: newX.replace(',', '.'), y: newY.replace(',', '.'), active: true }]);
+      const nextX = newX.replace(',', '.');
+      const nextY = newY.replace(',', '.');
+      setRegressionPoints([...regressionPoints, { x: nextX, y: nextY, active: true }]);
+      void recordAnalysisStep({
+        ...getMethodAuditContext('Linear Regression'),
+        fieldKey: `calibration_point_${regressionPoints.length + 1}`,
+        fieldLabel: `Calibration point ${regressionPoints.length + 1}`,
+        previousValue: '',
+        nextValue: `X=${nextX}; Y=${nextY}`,
+        stepDescription: `Added calibration point ${regressionPoints.length + 1}: concentration ${nextX}, response ${nextY}.`
+      });
       setNewX('');
       setNewY('');
     }
@@ -1571,6 +1586,77 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
 
   const customFormulaVariables = customFormulaResult?.variables ?? [];
 
+  const getAnalysisAction = (previousValue: string, nextValue: string) => {
+    if (previousValue && !nextValue) return 'cleared';
+    if (!previousValue && nextValue) return 'filled';
+    return 'changed';
+  };
+
+  const recordAnalysisStep = async (payload: AnalysisAuditPayload) => {
+    const previousValue = String(payload.previousValue ?? '').trim();
+    const nextValue = String(payload.nextValue ?? '').trim();
+
+    if (!payload.fieldLabel || previousValue === nextValue) return;
+
+    try {
+      await fetch('/api/audit/analysis-events', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...payload,
+          analysisRunId: payload.analysisRunId ?? analysisRunIdRef.current,
+          previousValue,
+          nextValue,
+          action: payload.action ?? getAnalysisAction(previousValue, nextValue)
+        })
+      });
+    } catch (error) {
+      console.warn('Failed to record analysis audit event:', error);
+    }
+  };
+
+  const getMethodAuditContext = (workflow: string) => ({
+    analysisRunId: analysisRunIdRef.current,
+    workflow,
+    projectId: openedProject?.id ?? returnTargetProject?.id ?? '',
+    projectName: openedProject?.compound ?? returnTargetProject?.compound ?? '',
+    methodId: selectedMethod?.id ?? returnTargetMethod?.id ?? '',
+    methodName: selectedMethod?.name ?? returnTargetMethod?.name ?? '',
+    compoundName: openedProject?.compound ?? returnTargetProject?.compound ?? workflow,
+    casId: openedProject?.id ?? returnTargetProject?.id ?? 'N/A'
+  });
+
+  const markAnalysisFieldStart = (fieldKey: string, value: string) => {
+    analysisFieldStartValues.current[fieldKey] = value;
+  };
+
+  const startNextAnalysisRun = () => {
+    analysisRunIdRef.current = createAnalysisRunId();
+  };
+
+  const commitAnalysisFieldChange = (
+    fieldKey: string,
+    fieldLabel: string,
+    nextValue: string,
+    workflow: string,
+    stepDescription?: string
+  ) => {
+    const previousValue = analysisFieldStartValues.current[fieldKey] ?? '';
+    delete analysisFieldStartValues.current[fieldKey];
+
+    void recordAnalysisStep({
+      ...getMethodAuditContext(workflow),
+      fieldKey,
+      fieldLabel,
+      previousValue,
+      nextValue,
+      stepDescription
+    });
+  };
+
   const getProjectReadingTargets = (method: ProjectMethod | null) => {
     if (!method) return [] as { value: ProjectReadingTarget; label: string }[];
 
@@ -1617,10 +1703,26 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     if (target.startsWith('custom:')) {
       const variable = target.replace('custom:', '');
       setCustomFormulaInputs((currentInputs) => ({ ...currentInputs, [variable]: value }));
+      void recordAnalysisStep({
+        ...getMethodAuditContext('Project Method'),
+        fieldKey: `custom_${variable}`,
+        fieldLabel: variable,
+        previousValue: customFormulaInputs[variable] ?? '',
+        nextValue: value,
+        stepDescription: `Captured hardware reading for ${variable}: ${value}.`
+      });
       return;
     }
 
     setMethodInputs((currentInputs) => ({ ...currentInputs, [target]: value }));
+    void recordAnalysisStep({
+      ...getMethodAuditContext('Project Method'),
+      fieldKey: target,
+      fieldLabel: target,
+      previousValue: methodInputs[target],
+      nextValue: value,
+      stepDescription: `Captured hardware reading for ${target}: ${value}.`
+    });
   };
 
   const saveReportSnapshot = async (payload: ReturnType<typeof buildReportPayload>) => {
@@ -1766,6 +1868,16 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     const registered = await registerCompletedAnalysis(completedReportPayload);
     if (!registered) return;
 
+    void recordAnalysisStep({
+      ...getMethodAuditContext('Project Method'),
+      fieldKey: 'project_method_report',
+      fieldLabel: 'Project method report',
+      previousValue: 'Pending',
+      nextValue: resultValue === null ? 'No numeric result' : `${formatNumber(resultValue)} ${resultUnit}`.trim(),
+      stepDescription: `Generated project method report for ${openedProject.compound} / ${selectedMethod.name}.`
+    });
+    startNextAnalysisRun();
+
     openPrintableProjectMethodReport({
       currentUser,
       project: openedProject,
@@ -1905,6 +2017,14 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     const nextAbsorbance = formatScanInputValue(point.absorbance);
 
     setTargetWavelength(nextWavelength);
+    void recordAnalysisStep({
+      ...getMethodAuditContext('Lambert-Beer'),
+      fieldKey: 'selected_scan_point',
+      fieldLabel: 'Selected scan point',
+      previousValue: targetWavelength || 'No point selected',
+      nextValue: `${nextWavelength} nm / ${nextAbsorbance} AU`,
+      stepDescription: `Selected spectral point at ${nextWavelength} nm with absorbance ${nextAbsorbance}.`
+    });
 
     if (calcMode === 'concentration' && lambertSerialTargetRef.current === 'blank') {
       skipNextSampleScanSyncRef.current = true;
@@ -1948,6 +2068,16 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     const registered = await registerCompletedAnalysis(payload);
     if (!registered) return;
 
+    void recordAnalysisStep({
+      ...getMethodAuditContext('Lambert-Beer'),
+      fieldKey: 'lambert_beer_report',
+      fieldLabel: 'Lambert-Beer report',
+      previousValue: 'Pending',
+      nextValue: `${formatNumber(finalResult)} ${calcMode === 'concentration' ? 'mol/L' : 'AU'}`,
+      stepDescription: `Generated Lambert-Beer report using mode ${calcMode}.`
+    });
+    startNextAnalysisRun();
+
     openPrintableReport(payload);
   };
 
@@ -1988,6 +2118,16 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
 
     const registered = await registerCompletedAnalysis(completedReportPayload);
     if (!registered) return;
+
+    void recordAnalysisStep({
+      ...getMethodAuditContext('Linear Regression'),
+      fieldKey: 'calibration_report',
+      fieldLabel: 'Calibration report',
+      previousValue: 'Pending',
+      nextValue: sampleEvaluation.finalConcentration === null ? 'No concentration calculated' : `${sampleEvaluation.finalConcentration.toFixed(6)} mol/L`,
+      stepDescription: `Generated calibration report with ${results.points.length} active points and R2 ${results.r2.toFixed(6)}.`
+    });
+    startNextAnalysisRun();
 
     openPrintableCalibrationReport({
       currentUser,
@@ -2046,6 +2186,16 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     } else {
       setScanMap(prev => ({ ...prev, ...newScanMap }));
     }
+    if (foundCount > 0) {
+      void recordAnalysisStep({
+        ...getMethodAuditContext('Lambert-Beer'),
+        fieldKey: 'spectral_scan_import',
+        fieldLabel: 'Spectral scan import',
+        previousValue: clearFirst ? 'Previous scan replaced' : 'Existing scan retained',
+        nextValue: `${foundCount} readings`,
+        stepDescription: `Imported ${foundCount} wavelength/absorbance readings for Lambert-Beer analysis.`
+      });
+    }
     return { count: foundCount, map: newScanMap };
   };
 
@@ -2076,8 +2226,24 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
             if (count === 0 && val) {
               if (lambertSerialTargetRef.current === 'blank') {
                 setAbsBlank(val);
+                void recordAnalysisStep({
+                  ...getMethodAuditContext('Lambert-Beer'),
+                  fieldKey: 'blank_absorbance',
+                  fieldLabel: 'Blank absorbance',
+                  previousValue: absBlank,
+                  nextValue: val,
+                  stepDescription: `Captured blank absorbance from hardware: ${val}.`
+                });
               } else {
                 setAbsSample(val);
+                void recordAnalysisStep({
+                  ...getMethodAuditContext('Lambert-Beer'),
+                  fieldKey: 'sample_absorbance',
+                  fieldLabel: 'Sample absorbance',
+                  previousValue: absSample,
+                  nextValue: val,
+                  stepDescription: `Captured sample absorbance from hardware: ${val}.`
+                });
               }
             }
           } else if (activeTabRef.current === 'linear-regression') {
@@ -2085,8 +2251,24 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
             if (val) {
               if (regressionSerialTargetRef.current === 'sample') {
                 setSampleY(val);
+                void recordAnalysisStep({
+                  ...getMethodAuditContext('Linear Regression'),
+                  fieldKey: 'sample_absorbance',
+                  fieldLabel: 'Sample absorbance',
+                  previousValue: sampleY,
+                  nextValue: val,
+                  stepDescription: `Captured sample response from hardware: ${val}.`
+                });
               } else {
                 setNewY(val);
+                void recordAnalysisStep({
+                  ...getMethodAuditContext('Linear Regression'),
+                  fieldKey: 'calibration_point_response',
+                  fieldLabel: 'Calibration point response',
+                  previousValue: newY,
+                  nextValue: val,
+                  stepDescription: `Captured calibration point response from hardware: ${val}.`
+                });
               }
             }
           } else if (activeTabRef.current === 'library' && val) {
@@ -2118,10 +2300,26 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
       if (calcMode === 'concentration' && lambertSerialTargetRef.current === 'blank') {
         skipNextSampleScanSyncRef.current = true;
         setAbsBlank(value);
+        void recordAnalysisStep({
+          ...getMethodAuditContext('Lambert-Beer'),
+          fieldKey: 'blank_absorbance',
+          fieldLabel: 'Blank absorbance',
+          previousValue: absBlank,
+          nextValue: value,
+          stepDescription: `Imported blank absorbance reading: ${value}.`
+        });
         return;
       }
 
       setAbsSample(value);
+      void recordAnalysisStep({
+        ...getMethodAuditContext('Lambert-Beer'),
+        fieldKey: 'sample_absorbance',
+        fieldLabel: 'Sample absorbance',
+        previousValue: absSample,
+        nextValue: value,
+        stepDescription: `Imported sample absorbance reading: ${value}.`
+      });
     };
 
     reader.onload = (evt) => {
@@ -2173,6 +2371,14 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
 
       if (newPoints.length > 0) {
         setRegressionPoints(prev => [...prev, ...newPoints]);
+        void recordAnalysisStep({
+          ...getMethodAuditContext('Linear Regression'),
+          fieldKey: 'calibration_points_import',
+          fieldLabel: 'Calibration points import',
+          previousValue: `${regressionPoints.length} points`,
+          nextValue: `${regressionPoints.length + newPoints.length} points`,
+          stepDescription: `Imported ${newPoints.length} calibration points for linear regression.`
+        });
       }
     };
     reader.readAsText(file);
@@ -2188,14 +2394,6 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
           </div>
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">{text.title}</h1>
           <p className="text-white/40 mt-1 max-w-2xl text-sm leading-relaxed">{text.description}</p>
-        </div>
-        <div className="flex w-full md:w-auto flex-col sm:flex-row gap-4">
-          <button className="px-6 py-4 bg-white/5 border border-white/5 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl">
-            Import .MTD
-          </button>
-          <button className="px-8 py-4 bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.3)] transition-all transform hover:scale-105 active:scale-95 rounded-xl">
-            New Project
-          </button>
         </div>
       </div>
 
@@ -2582,6 +2780,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                                 step="any"
                                 value={customFormulaInputs[variable] ?? ''}
                                 onChange={(event) => updateCustomFormulaInput(variable, event.target.value)}
+                                onFocus={() => markAnalysisFieldStart(`custom_${variable}`, customFormulaInputs[variable] ?? '')}
+                                onBlur={(event) => commitAnalysisFieldChange(`custom_${variable}`, variable, event.target.value, 'Project Method', `Updated custom formula variable ${variable}.`)}
                                 className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                                 placeholder="0.000"
                               />
@@ -2616,6 +2816,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               step="any"
                               value={methodInputs.sampleAbsorbance}
                               onChange={(event) => updateMethodInput('sampleAbsorbance', event.target.value)}
+                              onFocus={() => markAnalysisFieldStart('sampleAbsorbance', methodInputs.sampleAbsorbance)}
+                              onBlur={(event) => commitAnalysisFieldChange('sampleAbsorbance', text.sampleAbsorbance, event.target.value, 'Project Method', 'Updated project method sample absorbance.')}
                               className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                               placeholder="0.000"
                             />
@@ -2631,6 +2833,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                                 step="any"
                                 value={methodInputs.standardAbsorbance}
                                 onChange={(event) => updateMethodInput('standardAbsorbance', event.target.value)}
+                                onFocus={() => markAnalysisFieldStart('standardAbsorbance', methodInputs.standardAbsorbance)}
+                                onBlur={(event) => commitAnalysisFieldChange('standardAbsorbance', text.standardAbsorbance, event.target.value, 'Project Method', 'Updated project method standard absorbance.')}
                                 className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                                 placeholder="0.000"
                               />
@@ -2642,6 +2846,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                                 step="any"
                                 value={methodInputs.standardConcentration}
                                 onChange={(event) => updateMethodInput('standardConcentration', event.target.value)}
+                                onFocus={() => markAnalysisFieldStart('standardConcentration', methodInputs.standardConcentration)}
+                                onBlur={(event) => commitAnalysisFieldChange('standardConcentration', text.standardConcentration, event.target.value, 'Project Method', 'Updated project method standard concentration.')}
                                 className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                                 placeholder="0.000"
                               />
@@ -2651,6 +2857,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               <input
                                 value={methodInputs.concentrationUnit}
                                 onChange={(event) => updateMethodInput('concentrationUnit', event.target.value)}
+                                onFocus={() => markAnalysisFieldStart('concentrationUnit', methodInputs.concentrationUnit)}
+                                onBlur={(event) => commitAnalysisFieldChange('concentrationUnit', text.sampleConcentrationUnit, event.target.value, 'Project Method', 'Updated project method concentration unit.')}
                                 className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                                 placeholder="mg/L, mol/L, ppm..."
                               />
@@ -2666,6 +2874,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               step="any"
                               value={methodInputs.blankAbsorbance}
                               onChange={(event) => updateMethodInput('blankAbsorbance', event.target.value)}
+                              onFocus={() => markAnalysisFieldStart('blankAbsorbance', methodInputs.blankAbsorbance)}
+                              onBlur={(event) => commitAnalysisFieldChange('blankAbsorbance', text.blankAbsorbance, event.target.value, 'Project Method', 'Updated project method blank absorbance.')}
                               className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                               placeholder="0.000"
                             />
@@ -2680,6 +2890,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               step="any"
                               value={methodInputs.transmittance}
                               onChange={(event) => updateMethodInput('transmittance', event.target.value)}
+                              onFocus={() => markAnalysisFieldStart('transmittance', methodInputs.transmittance)}
+                              onBlur={(event) => commitAnalysisFieldChange('transmittance', text.transmittance, event.target.value, 'Project Method', 'Updated project method transmittance.')}
                               className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                               placeholder="100"
                             />
@@ -2904,7 +3116,17 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
             <div className="space-y-6">
               <div className="flex p-1 rounded-xl bg-white/[0.03] border border-white/10">
                 <button
-                  onClick={() => setCalcMode('concentration')}
+                  onClick={() => {
+                    void recordAnalysisStep({
+                      ...getMethodAuditContext('Lambert-Beer'),
+                      fieldKey: 'calculation_mode',
+                      fieldLabel: 'Calculation mode',
+                      previousValue: calcMode,
+                      nextValue: 'concentration',
+                      stepDescription: 'Selected Lambert-Beer concentration calculation mode.'
+                    });
+                    setCalcMode('concentration');
+                  }}
                   className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                     calcMode === 'concentration' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
                   }`}
@@ -2912,7 +3134,17 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   Concentration
                 </button>
                 <button
-                  onClick={() => setCalcMode('absorbance')}
+                  onClick={() => {
+                    void recordAnalysisStep({
+                      ...getMethodAuditContext('Lambert-Beer'),
+                      fieldKey: 'calculation_mode',
+                      fieldLabel: 'Calculation mode',
+                      previousValue: calcMode,
+                      nextValue: 'absorbance',
+                      stepDescription: 'Selected Lambert-Beer absorbance calculation mode.'
+                    });
+                    setCalcMode('absorbance');
+                  }}
                   className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                     calcMode === 'absorbance' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
                   }`}
@@ -2956,35 +3188,35 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   <label className="block space-y-2">
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.targetWavelength}</span>
                     <div className="relative">
-                      <input type="number" step="1" value={targetWavelength} onChange={(e) => setTargetWavelength(e.target.value)} placeholder="Ex: 400" className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                      <input type="number" step="1" value={targetWavelength} onChange={(e) => setTargetWavelength(e.target.value)} onFocus={() => markAnalysisFieldStart('targetWavelength', targetWavelength)} onBlur={(event) => commitAnalysisFieldChange('targetWavelength', text.targetWavelength, event.target.value, 'Lambert-Beer', 'Updated target wavelength for Lambert-Beer analysis.')} placeholder="Ex: 400" className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                     </div>
                   </label>
                   <label className="block space-y-2">
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.absorbance}</span>
-                    <input type="number" step="any" value={absSample} onChange={(e) => setAbsSample(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                    <input type="number" step="any" value={absSample} onChange={(e) => setAbsSample(e.target.value)} onFocus={() => markAnalysisFieldStart('absSample', absSample)} onBlur={(event) => commitAnalysisFieldChange('absSample', text.absorbance, event.target.value, 'Lambert-Beer', 'Updated Lambert-Beer sample absorbance.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                   </label>
                   <label className="block space-y-2">
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.blank}</span>
-                    <input type="number" step="any" value={absBlank} onChange={(e) => setAbsBlank(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                    <input type="number" step="any" value={absBlank} onChange={(e) => setAbsBlank(e.target.value)} onFocus={() => markAnalysisFieldStart('absBlank', absBlank)} onBlur={(event) => commitAnalysisFieldChange('absBlank', text.blank, event.target.value, 'Lambert-Beer', 'Updated Lambert-Beer blank absorbance.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                   </label>
                 </>
               ) : (
                 <label className="block space-y-2">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.targetConcentration}</span>
-                  <input type="number" step="any" value={inputConcentration} onChange={(e) => setInputConcentration(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                  <input type="number" step="any" value={inputConcentration} onChange={(e) => setInputConcentration(e.target.value)} onFocus={() => markAnalysisFieldStart('inputConcentration', inputConcentration)} onBlur={(event) => commitAnalysisFieldChange('inputConcentration', text.targetConcentration, event.target.value, 'Lambert-Beer', 'Updated target concentration for Lambert-Beer absorbance mode.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
                 </label>
               )}
               <label className="block space-y-2">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.molarCoeff}</span>
-                <input type="number" step="any" value={epsilon} onChange={(e) => setEpsilon(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                <input type="number" step="any" value={epsilon} onChange={(e) => setEpsilon(e.target.value)} onFocus={() => markAnalysisFieldStart('epsilon', epsilon)} onBlur={(event) => commitAnalysisFieldChange('epsilon', text.molarCoeff, event.target.value, 'Lambert-Beer', 'Updated molar absorptivity coefficient.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
               <label className="block space-y-2">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.pathLength}</span>
-                <input type="number" step="any" value={pathLength} onChange={(e) => setPathLength(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                <input type="number" step="any" value={pathLength} onChange={(e) => setPathLength(e.target.value)} onFocus={() => markAnalysisFieldStart('pathLength', pathLength)} onBlur={(event) => commitAnalysisFieldChange('pathLength', text.pathLength, event.target.value, 'Lambert-Beer', 'Updated optical path length.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
               <label className="block space-y-2">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.dilutionFactor}</span>
-                <input type="number" step="any" min="1" value={dilutionFactor} onChange={(e) => setDilutionFactor(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
+                <input type="number" step="any" min="1" value={dilutionFactor} onChange={(e) => setDilutionFactor(e.target.value)} onFocus={() => markAnalysisFieldStart('dilutionFactor', dilutionFactor)} onBlur={(event) => commitAnalysisFieldChange('dilutionFactor', text.dilutionFactor, event.target.value, 'Lambert-Beer', 'Updated dilution factor.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" />
               </label>
             </div>
 
@@ -3343,12 +3575,12 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
             <div className="grid grid-cols-2 gap-3">
               <label className="block space-y-2">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.concentrationX}</span>
-                <input type="number" step="any" value={newX} onChange={(e) => setNewX(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
+                <input type="number" step="any" value={newX} onChange={(e) => setNewX(e.target.value)} onFocus={() => markAnalysisFieldStart('newX', newX)} onBlur={(event) => commitAnalysisFieldChange('newX', text.concentrationX, event.target.value, 'Linear Regression', 'Updated pending calibration concentration.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
               </label>
               <label className="block space-y-2">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.absorbanceY}</span>
                 <div className="flex gap-2">
-                  <input type="number" step="any" value={newY} onChange={(e) => setNewY(e.target.value)} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
+                  <input type="number" step="any" value={newY} onChange={(e) => setNewY(e.target.value)} onFocus={() => markAnalysisFieldStart('newY', newY)} onBlur={(event) => commitAnalysisFieldChange('newY', text.absorbanceY, event.target.value, 'Linear Regression', 'Updated pending calibration response.')} className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/30" placeholder="0.00" />
                   <button onClick={addPoint} className="p-3 bg-primary text-on-primary rounded-xl hover:scale-105 transition-all"><Plus size={20} /></button>
                 </div>
               </label>
@@ -3587,6 +3819,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               step="any"
                               value={sampleY}
                               onChange={(e) => setSampleY(e.target.value)}
+                              onFocus={() => markAnalysisFieldStart('sampleY', sampleY)}
+                              onBlur={(event) => commitAnalysisFieldChange('sampleY', text.sampleAbsorbance, event.target.value, 'Linear Regression', 'Updated sample absorbance for curve quantification.')}
                               className={`w-full rounded-xl bg-white/[0.05] border px-4 py-3 text-white outline-none focus:border-secondary/40 ${
                                 sampleEvaluation.isAboveCalibrationRange ? 'border-red-400/40' : 'border-white/10'
                               }`}
@@ -3601,6 +3835,8 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               min="1"
                               value={regressionSampleDilution}
                               onChange={(e) => setRegressionSampleDilution(e.target.value)}
+                              onFocus={() => markAnalysisFieldStart('regressionSampleDilution', regressionSampleDilution)}
+                              onBlur={(event) => commitAnalysisFieldChange('regressionSampleDilution', 'Dilution Factor', event.target.value, 'Linear Regression', 'Updated dilution factor for curve quantification.')}
                               className="w-full rounded-xl bg-white/[0.05] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                               placeholder="1"
                             />
