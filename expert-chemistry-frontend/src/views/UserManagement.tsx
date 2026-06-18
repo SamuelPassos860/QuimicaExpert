@@ -340,76 +340,78 @@ export default function UserManagement({ currentUser, globalSearch }: UserManage
         </div>
       </div>
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[0.95fr_1.05fr] gap-6">
-        <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
+      <div className="grid grid-cols-1 gap-6">
+        <section className="glass-panel rounded-[2rem] p-4 sm:p-6 lg:p-8 border-white/[0.03] space-y-6 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 min-w-0">
+            <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20 self-start shrink-0">
               <UserPlus size={22} />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
                 {text.accountProvisioning}
               </p>
-              <h2 className="text-2xl font-display font-bold text-white mt-1">
+              <h2 className="text-xl sm:text-2xl font-display font-bold text-white mt-1 break-words">
                 {text.createNewUser}
               </h2>
             </div>
           </div>
 
           <form onSubmit={handleCreateUser} className="space-y-5">
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.userId}</span>
-              <input
-                value={createUserForm.userId}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, userId: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder="new_user"
-              />
-            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5 items-end">
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.userId}</span>
+                <input
+                  value={createUserForm.userId}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, userId: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder="new_user"
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.email}</span>
-              <input
-                type="email"
-                value={createUserForm.email}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, email: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder="chemist@example.com"
-              />
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.email}</span>
+                <input
+                  type="email"
+                  value={createUserForm.email}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, email: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder="chemist@example.com"
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.fullName}</span>
-              <input
-                value={createUserForm.fullName}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, fullName: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder="Dr. Ada Lovelace"
-              />
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.fullName}</span>
+                <input
+                  value={createUserForm.fullName}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, fullName: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder="Dr. Ada Lovelace"
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.password}</span>
-              <input
-                type="password"
-                value={createUserForm.password}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, password: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder={text.passwordPlaceholder}
-              />
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.password}</span>
+                <input
+                  type="password"
+                  value={createUserForm.password}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, password: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder={text.passwordPlaceholder}
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.role}</span>
-              <select
-                value={createUserForm.role}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, role: event.target.value as UserRole }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-              >
-                <option value="analyst">{text.analyst}</option>
-                <option value="admin">{text.admin}</option>
-              </select>
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.role}</span>
+                <select
+                  value={createUserForm.role}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, role: event.target.value as UserRole }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                >
+                  <option value="analyst">{text.analyst}</option>
+                  <option value="admin">{text.admin}</option>
+                </select>
+              </label>
+            </div>
 
             {createUserError && (
               <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
@@ -426,7 +428,7 @@ export default function UserManagement({ currentUser, globalSearch }: UserManage
             <button
               type="submit"
               disabled={isCreatingUser}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-secondary text-on-secondary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(118,243,234,0.22)] transition-all disabled:opacity-60 disabled:cursor-not-allowed w-full"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-secondary text-on-secondary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(118,243,234,0.22)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <UserPlus size={16} />
               {isCreatingUser ? text.creating : text.createUser}
