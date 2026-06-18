@@ -120,6 +120,11 @@ const DASHBOARD_TEXT = {
     avgA: 'Avg A',
     noFolders: 'No folders match this search.',
     analyticalTrend: 'Analytical Trend',
+    trendFilters: 'Trend Limits',
+    minAbsorbance: 'Min A',
+    maxAbsorbance: 'Max A',
+    clearFilters: 'Clear lines',
+    filteredResults: 'Reference lines',
     recentCompleted: 'Recent completed results by project',
     clickOpenReports: 'Click Open Reports to inspect each record',
     completedSequence: 'Completed report sequence',
@@ -180,6 +185,11 @@ const DASHBOARD_TEXT = {
     avgA: 'Média A',
     noFolders: 'Nenhuma pasta corresponde a esta busca.',
     analyticalTrend: 'Tendência Analítica',
+    trendFilters: 'Limites de Tendência',
+    minAbsorbance: 'Min A',
+    maxAbsorbance: 'Max A',
+    clearFilters: 'Limpar linhas',
+    filteredResults: 'Linhas de referência',
     recentCompleted: 'Resultados recentes concluídos por projeto',
     clickOpenReports: 'Clique em Abrir Relatórios para inspecionar cada registro',
     completedSequence: 'Sequência de relatórios concluídos',
@@ -240,6 +250,11 @@ const DASHBOARD_TEXT = {
     avgA: 'Prom. A',
     noFolders: 'Ninguna carpeta coincide con esta búsqueda.',
     analyticalTrend: 'Tendencia Analítica',
+    trendFilters: 'Limites de Tendencia',
+    minAbsorbance: 'Min A',
+    maxAbsorbance: 'Max A',
+    clearFilters: 'Limpiar líneas',
+    filteredResults: 'Líneas de referencia',
     recentCompleted: 'Resultados recientes completados por proyecto',
     clickOpenReports: 'Haz clic en Abrir Informes para inspeccionar cada registro',
     completedSequence: 'Secuencia de informes completados',
@@ -306,6 +321,14 @@ function getMin(values: number[]) {
   return finiteValues.length ? Math.min(...finiteValues) : 0;
 }
 
+function parseRangeValue(value: string) {
+  const trimmed = value.trim().replace(',', '.');
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function getReportIdentity(report: DashboardSummary['recentReports'][number]) {
   if (report.projectName || report.projectId) {
     const [, ...rawAnalysisParts] = report.compoundName.split(' - ');
@@ -352,6 +375,8 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState('all');
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [trendMinAbsorbance, setTrendMinAbsorbance] = useState('');
+  const [trendMaxAbsorbance, setTrendMaxAbsorbance] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingProjectKey, setIsDeletingProjectKey] = useState<string | null>(null);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
@@ -494,9 +519,16 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
       new Date(right.latestAt).getTime() - new Date(left.latestAt).getTime()
     ));
   }, [recentReports]);
-  const filteredRecentReports = selectedProjectKey === 'all'
+  const selectedProjectReports = selectedProjectKey === 'all'
     ? recentReports
     : recentReports.filter((report) => getReportProjectKey(report) === selectedProjectKey);
+  const minAbsorbanceLimit = parseRangeValue(trendMinAbsorbance);
+  const maxAbsorbanceLimit = parseRangeValue(trendMaxAbsorbance);
+  const hasTrendFilters = [
+    trendMinAbsorbance,
+    trendMaxAbsorbance
+  ].some((value) => value.trim().length > 0);
+  const filteredRecentReports = selectedProjectReports;
   const normalizedProjectSearch = projectSearchQuery.trim().toLowerCase();
   const visibleProjectGroups = normalizedProjectSearch
     ? projectGroups.filter((project) => project.name.toLowerCase().includes(normalizedProjectSearch))
@@ -508,8 +540,13 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
   const latestReportIdentity = latestReport ? getReportIdentity(latestReport) : null;
   const recentReportsChronological = [...filteredRecentReports].reverse();
   const recentAbsorbanceValues = recentReportsChronological.map((report) => report.absorbance);
-  const minRecentAbsorbance = getMin(recentAbsorbanceValues);
-  const maxRecentAbsorbance = getMax(recentAbsorbanceValues);
+  const referenceAbsorbanceValues = [
+    ...recentAbsorbanceValues,
+    minAbsorbanceLimit,
+    maxAbsorbanceLimit
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const minRecentAbsorbance = getMin(referenceAbsorbanceValues);
+  const maxRecentAbsorbance = getMax(referenceAbsorbanceValues);
   const avgRecentAbsorbance = filteredRecentReports.length
     ? filteredRecentReports.reduce((sum, report) => sum + report.absorbance, 0) / filteredRecentReports.length
     : 0;
@@ -693,6 +730,50 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                   </span>
                 </div>
 
+                <div className="mb-4 rounded-2xl border border-white/8 bg-white/[0.025] p-3 sm:p-4">
+                  <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-white/35 font-bold">{text.trendFilters}</p>
+                      <p className="text-sm text-white/55 mt-1">
+                        {text.filteredResults}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 w-full xl:max-w-sm">
+                      <label className="space-y-1.5">
+                        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-white/35">{text.minAbsorbance}</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={trendMinAbsorbance}
+                          onChange={(event) => setTrendMinAbsorbance(event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-[#08101f]/65 px-3 py-2.5 text-sm text-white outline-none transition-all focus:border-primary/35"
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-white/35">{text.maxAbsorbance}</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={trendMaxAbsorbance}
+                          onChange={(event) => setTrendMaxAbsorbance(event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-[#08101f]/65 px-3 py-2.5 text-sm text-white outline-none transition-all focus:border-primary/35"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrendMinAbsorbance('');
+                        setTrendMaxAbsorbance('');
+                      }}
+                      disabled={!hasTrendFilters}
+                      className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-white/55 transition-all hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {text.clearFilters}
+                    </button>
+                  </div>
+                </div>
+
                 {recentReportsChronological.length ? (
                   <div className="rounded-2xl bg-[#08101f]/55 border border-white/5 p-3 sm:p-4 overflow-hidden">
                     {(() => {
@@ -702,6 +783,12 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                       const plotWidth = width - padding.left - padding.right;
                       const plotHeight = height - padding.top - padding.bottom;
                       const valueRange = maxRecentAbsorbance - minRecentAbsorbance || 1;
+                      const referenceLines = [
+                        { key: 'min', label: text.minAbsorbance, value: minAbsorbanceLimit, color: '#76f3ea' },
+                        { key: 'max', label: text.maxAbsorbance, value: maxAbsorbanceLimit, color: '#facc15' }
+                      ].filter((line): line is { key: string; label: string; value: number; color: string } => (
+                        typeof line.value === 'number' && Number.isFinite(line.value)
+                      ));
                       const pointCount = Math.max(1, recentReportsChronological.length - 1);
                       const scaleX = (index: number) => padding.left + (index / pointCount) * plotWidth;
                       const scaleY = (value: number) => padding.top + plotHeight - ((value - minRecentAbsorbance) / valueRange) * plotHeight;
@@ -725,6 +812,37 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                                 <line x1={padding.left} y1={y} x2={padding.left + plotWidth} y2={y} stroke="rgba(255,255,255,0.045)" />
                                 <text x={padding.left - 10} y={y + 4} textAnchor="end" fontSize="10" fill="rgba(255,255,255,0.38)">
                                   {formatDecimal(value)}
+                                </text>
+                              </g>
+                            );
+                          })}
+                          {referenceLines.map((line) => {
+                            const y = scaleY(line.value);
+
+                            return (
+                              <g key={line.key}>
+                                <line
+                                  x1={padding.left}
+                                  y1={y}
+                                  x2={padding.left + plotWidth}
+                                  y2={y}
+                                  stroke={line.color}
+                                  strokeWidth="2"
+                                  strokeDasharray="7 7"
+                                  opacity="0.78"
+                                />
+                                <rect
+                                  x={padding.left + plotWidth - 92}
+                                  y={y - 18}
+                                  width="92"
+                                  height="16"
+                                  rx="6"
+                                  fill="rgba(8,16,31,0.88)"
+                                  stroke={line.color}
+                                  strokeOpacity="0.28"
+                                />
+                                <text x={padding.left + plotWidth - 46} y={y - 6} textAnchor="middle" fontSize="9" fill={line.color}>
+                                  {line.label} {formatDecimal(line.value)}
                                 </text>
                               </g>
                             );

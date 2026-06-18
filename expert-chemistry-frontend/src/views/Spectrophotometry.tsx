@@ -986,8 +986,8 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
       </div>
 
       {activeTab === 'calculate' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.55fr] gap-6 lg:gap-8">
-          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8 flex flex-col h-full">
+        <div className="space-y-6 lg:space-y-8">
+          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className={`rounded-2xl border p-4 ${hasSelectedCompound ? 'border-primary/30 bg-primary/10' : 'border-white/8 bg-white/[0.03]'}`}>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">{text.step1}</p>
@@ -1051,21 +1051,21 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pr-0 sm:pr-2 flex-1 min-h-[750px] xl:max-h-[1800px] content-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 lg:gap-6 overflow-y-auto custom-scrollbar pr-0 sm:pr-2 max-h-[720px] content-start">
               {isLoadingSpectral && (
-                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="lg:col-span-2 2xl:col-span-3 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   {text.loadingSpectral}
                 </div>
               )}
 
               {!isLoadingSpectral && spectralError && (
-                <div className="md:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+                <div className="lg:col-span-2 2xl:col-span-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
                   {spectralError}
                 </div>
               )}
 
               {!isLoadingSpectral && !spectralError && spectralLibrary.length === 0 && (
-                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="lg:col-span-2 2xl:col-span-3 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   {text.noSpectralRecords}
                 </div>
               )}
@@ -1124,7 +1124,7 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
 
           </section>
 
-          <section className="space-y-6">
+          <section>
             <div className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03]">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
@@ -1165,8 +1165,9 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
                 </button>
               </div>
 
-              <div className="space-y-5">
-                <div className="rounded-2xl border border-primary/20 bg-primary/8 px-4 py-4">
+              <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6 lg:gap-8 items-start">
+                <div className="space-y-5 min-w-0">
+                  <div className="rounded-2xl border border-primary/20 bg-primary/8 px-4 py-4">
                   <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-primary font-bold">
                     {text.currentCompound}
                   </p>
@@ -1196,93 +1197,98 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
                   </div>
                 </div>
 
-                <label className="space-y-2 block">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.pathLength}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={pathLength}
-                    onFocus={() => markAnalysisFieldStart('path_length', pathLength)}
-                    onChange={(event) => setPathLength(event.target.value)}
-                    onBlur={(event) => commitAnalysisFieldChange('path_length', text.pathLength, event.target.value)}
-                    className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                  />
-                </label>
-
-                {calcMode === 'absorbance' ? (
-                  <label className="space-y-2 block">
-                    <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.concentration}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={concentration}
-                      onFocus={() => markAnalysisFieldStart('concentration', concentration)}
-                      onChange={(event) => setConcentration(event.target.value)}
-                      onBlur={(event) => commitAnalysisFieldChange('concentration', text.concentration, event.target.value)}
-                      className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                    />
-                  </label>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4">
                     <label className="space-y-2 block">
-                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.sampleAbsorbance}</span>
+                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.pathLength}</span>
                       <input
                         type="number"
+                        min="0"
                         step="any"
-                        value={sampleAbsorbance}
-                        onFocus={() => markAnalysisFieldStart('sample_absorbance', sampleAbsorbance)}
-                        onChange={(event) => setSampleAbsorbance(event.target.value)}
-                        onBlur={(event) => commitAnalysisFieldChange('sample_absorbance', text.sampleAbsorbance, event.target.value)}
+                        value={pathLength}
+                        onFocus={() => markAnalysisFieldStart('path_length', pathLength)}
+                        onChange={(event) => setPathLength(event.target.value)}
+                        onBlur={(event) => commitAnalysisFieldChange('path_length', text.pathLength, event.target.value)}
                         className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
                       />
                     </label>
-                    <label className="space-y-2 block">
-                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.blank}</span>
-                      <input
-                        type="number"
-                        step="any"
-                        value={blankAbsorbance}
-                        onFocus={() => markAnalysisFieldStart('blank_absorbance', blankAbsorbance)}
-                        onChange={(event) => setBlankAbsorbance(event.target.value)}
-                        onBlur={(event) => commitAnalysisFieldChange('blank_absorbance', text.blank, event.target.value)}
-                        className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
 
-              <div className="mt-8 rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
-                      {text.result}
-                    </p>
-                    <p className="text-4xl font-display font-bold text-white mt-2">
-                      {calcMode === 'absorbance' ? formatNumber(effectiveAbsorbance) : formatNumber(calculatedConcentration)}
-                    </p>
-                    <p className="text-sm text-white/45 mt-2">
-                      {calcMode === 'absorbance' ? text.targetAbsorbance : text.targetConcentration}
-                    </p>
-                  </div>
-                  <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
-                    <Waves size={34} />
+                    {calcMode === 'absorbance' ? (
+                      <label className="space-y-2 block">
+                        <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.concentration}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={concentration}
+                          onFocus={() => markAnalysisFieldStart('concentration', concentration)}
+                          onChange={(event) => setConcentration(event.target.value)}
+                          onBlur={(event) => commitAnalysisFieldChange('concentration', text.concentration, event.target.value)}
+                          className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                        />
+                      </label>
+                    ) : (
+                      <>
+                        <label className="space-y-2 block">
+                          <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.sampleAbsorbance}</span>
+                          <input
+                            type="number"
+                            step="any"
+                            value={sampleAbsorbance}
+                            onFocus={() => markAnalysisFieldStart('sample_absorbance', sampleAbsorbance)}
+                            onChange={(event) => setSampleAbsorbance(event.target.value)}
+                            onBlur={(event) => commitAnalysisFieldChange('sample_absorbance', text.sampleAbsorbance, event.target.value)}
+                            className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                          />
+                        </label>
+                        <label className="space-y-2 block md:col-span-2 xl:col-span-1">
+                          <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.blank}</span>
+                          <input
+                            type="number"
+                            step="any"
+                            value={blankAbsorbance}
+                            onFocus={() => markAnalysisFieldStart('blank_absorbance', blankAbsorbance)}
+                            onChange={(event) => setBlankAbsorbance(event.target.value)}
+                            onBlur={(event) => commitAnalysisFieldChange('blank_absorbance', text.blank, event.target.value)}
+                            className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
-                  <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">{text.liveFormula}</p>
-                  {calcMode === 'absorbance' ? (
-                    <p className="text-white font-semibold mt-3 break-words">
-                      A = {formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)} × {formatNumber(concentrationValue)} = {formatNumber(effectiveAbsorbance)}
-                    </p>
-                  ) : (
-                    <p className="text-white font-semibold mt-3 break-words">
-                      c = ({formatNumber(sampleAbsValue)} - {formatNumber(blankAbsValue)}) / ({formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)}) = {formatNumber(calculatedConcentration)} mol/L
-                    </p>
-                  )}
+                <div className="min-w-0">
+                  <div className="rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
+                          {text.result}
+                        </p>
+                        <p className="text-4xl font-display font-bold text-white mt-2">
+                          {calcMode === 'absorbance' ? formatNumber(effectiveAbsorbance) : formatNumber(calculatedConcentration)}
+                        </p>
+                        <p className="text-sm text-white/45 mt-2">
+                          {calcMode === 'absorbance' ? text.targetAbsorbance : text.targetConcentration}
+                        </p>
+                      </div>
+                      <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
+                        <Waves size={34} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
+                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">{text.liveFormula}</p>
+                      {calcMode === 'absorbance' ? (
+                        <p className="text-white font-semibold mt-3 break-words">
+                          A = {formatNumber(epsilonValue)} Ã— {formatNumber(pathLengthValue)} Ã— {formatNumber(concentrationValue)} = {formatNumber(effectiveAbsorbance)}
+                        </p>
+                      ) : (
+                        <p className="text-white font-semibold mt-3 break-words">
+                          c = ({formatNumber(sampleAbsValue)} - {formatNumber(blankAbsValue)}) / ({formatNumber(epsilonValue)} Ã— {formatNumber(pathLengthValue)}) = {formatNumber(calculatedConcentration)} mol/L
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 

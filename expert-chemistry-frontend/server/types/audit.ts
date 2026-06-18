@@ -11,6 +11,7 @@ export const AUDIT_EVENT_TYPES = [
   'password_reset_completed',
   'compound_saved',
   'compound_deleted',
+  'spectrophotometer_run_ingested',
   'pdf_exported'
 ] as const;
 
@@ -19,6 +20,7 @@ export const AUDIT_RESOURCE_TYPES = [
   'user',
   'compound',
   'analysis',
+  'spectrophotometer_run',
   'spectrophotometry_report'
 ] as const;
 
