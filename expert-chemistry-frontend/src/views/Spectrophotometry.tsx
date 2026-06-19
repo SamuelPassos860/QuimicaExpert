@@ -1,13 +1,15 @@
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, FlaskConical, FolderOpen, Search, Sparkles, Sigma, Trash2, Waves } from 'lucide-react';
-import type { ReportExportAuditPayload } from '../types/audit';
+import { Download, FlaskConical, Search, Sigma, Trash2, Waves } from 'lucide-react';
+import type { AnalysisAuditPayload, ReportExportAuditPayload } from '../types/audit';
 import type { AuthUser } from '../types/auth';
 import { useLanguage } from '../i18n';
 import { buildReportPayload, openPrintableReport } from '../utils/reportExport';
 
 type SourceType = 'Bank' | 'PhotochemCAD' | 'Manual';
 type TabType = 'calculate' | 'saved';
+
+const createAnalysisRunId = () => `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 interface SavedCompoundRecord {
   id: string;
@@ -54,16 +56,10 @@ interface ApiSpectralRecord {
   absorption_solvent: string | null;
 }
 
-interface ReportProjectOption {
-  id: string;
-  name: string;
-  matrix: string;
-  wavelength: string;
-}
-
 interface SpectrophotometryProps {
   currentUser: AuthUser;
   initialTab?: TabType;
+  globalSearch?: { query: string; nonce: number };
 }
 
 const SPECTRO_TEXT = {
@@ -404,37 +400,7 @@ function getSpectralSortPriority(value: string) {
   return 2;
 }
 
-function loadReportProjectOptions(currentUser: AuthUser): ReportProjectOption[] {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const storedValue = window.localStorage.getItem(`quimicaexpert:methods:v1:${currentUser.id}`);
-    if (!storedValue) return [];
-
-    const parsedValue = JSON.parse(storedValue) as unknown;
-    const projectsValue = parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue) && 'projects' in parsedValue
-      ? (parsedValue as { projects?: unknown }).projects
-      : parsedValue;
-
-    if (!Array.isArray(projectsValue)) return [];
-
-    return projectsValue
-      .filter((project): project is Record<string, unknown> => Boolean(project) && typeof project === 'object' && !Array.isArray(project))
-      .map((project) => ({
-        id: typeof project.id === 'string' ? project.id : '',
-        name: typeof project.compound === 'string' ? project.compound : '',
-        matrix: typeof project.matrix === 'string' ? project.matrix : 'N/A',
-        wavelength: typeof project.wavelength === 'string' ? project.wavelength : 'N/A'
-      }))
-      .filter((project) => project.id && project.name)
-      .sort((left, right) => left.name.localeCompare(right.name));
-  } catch (error) {
-    console.warn('Failed to load report project options:', error);
-    return [];
-  }
-}
-
-export default function Spectrophotometry({ currentUser, initialTab = 'calculate' }: SpectrophotometryProps) {
+export default function Spectrophotometry({ currentUser, initialTab = 'calculate', globalSearch }: SpectrophotometryProps) {
   const { language } = useLanguage();
   const text = SPECTRO_TEXT[language];
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
@@ -455,9 +421,12 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteCas, setPendingDeleteCas] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SavedCompoundRecord | null>(null);
-  const [reportProjects, setReportProjects] = useState<ReportProjectOption[]>(() => loadReportProjectOptions(currentUser));
-  const [selectedReportProjectId, setSelectedReportProjectId] = useState('');
-  const reportSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setActiveTab('calculate');
+    setQuery(globalSearch.query);
+  }, [globalSearch?.nonce]);
 
   const [compoundName, setCompoundName] = useState('');
   const [casId, setCasId] = useState('');
@@ -470,15 +439,12 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
   const [calcMode, setCalcMode] = useState<'absorbance' | 'concentration'>('absorbance');
   const [sampleAbsorbance, setSampleAbsorbance] = useState('0');
   const [blankAbsorbance, setBlankAbsorbance] = useState('0');
+  const analysisFieldStartValues = useRef<Record<string, string>>({});
+  const analysisRunIdRef = useRef(createAnalysisRunId());
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
-
-  useEffect(() => {
-    setReportProjects(loadReportProjectOptions(currentUser));
-    setSelectedReportProjectId('');
-  }, [currentUser.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -651,12 +617,12 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
     : `(${formatNumber(sampleAbsValue)} - ${formatNumber(blankAbsValue)}) / (${formatNumber(epsilonValue)} x ${formatNumber(pathLengthValue)})`;
 
   const hasSelectedCompound = compoundName.trim().length > 0;
-  const selectedReportProject = reportProjects.find((project) => project.id === selectedReportProjectId) ?? null;
   const hasCalculationInputs = calcMode === 'absorbance' 
     ? (pathLengthValue > 0 && concentrationValue > 0)
     : (pathLengthValue > 0 && sampleAbsValue > 0);
 
   const applySpectralRecord = (record: SpectralRecord) => {
+    void recordAnalysisChange('compound', text.compound, compoundName || text.notIdentified, record.name);
     setSelectedSpectralRecordId(record.id);
     setCompoundName(record.name);
     setCasId(record.cas);
@@ -667,6 +633,7 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
   };
 
   const applySavedCompound = (compound: SavedCompoundRecord) => {
+    void recordAnalysisChange('compound', text.compound, compoundName || text.notIdentified, compound.name);
     setSelectedSpectralRecordId(null);
     setCompoundName(compound.name);
     setCasId(compound.cas);
@@ -694,11 +661,68 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
         absorbance: effectiveAbsorbance
       },
       {
-        projectId: selectedReportProject?.id,
-        projectName: selectedReportProject?.name,
         ...overrides
       }
     );
+
+  const getAnalysisAction = (previousValue: string, nextValue: string) => {
+    if (previousValue && !nextValue) return 'cleared';
+    if (!previousValue && nextValue) return 'filled';
+    return 'changed';
+  };
+
+  const recordAnalysisChange = async (
+    fieldKey: string,
+    fieldLabel: string,
+    previousValue: string,
+    nextValue: string,
+    overrides?: Partial<AnalysisAuditPayload>
+  ) => {
+    const normalizedPreviousValue = String(previousValue ?? '').trim();
+    const normalizedNextValue = String(nextValue ?? '').trim();
+
+    if (normalizedPreviousValue === normalizedNextValue) return;
+
+    try {
+      await fetch('/api/audit/analysis-events', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          analysisRunId: analysisRunIdRef.current,
+          fieldKey,
+          fieldLabel,
+          previousValue: normalizedPreviousValue,
+          nextValue: normalizedNextValue,
+          compoundName: compoundName || 'Not identified',
+          casId: casId || 'N/A',
+          workflow: 'Spectrophotometry',
+          methodName: calcMode === 'absorbance' ? 'Lambert-Beer absorbance' : 'Lambert-Beer concentration',
+          stepDescription: `${fieldLabel} changed from "${normalizedPreviousValue || '-'}" to "${normalizedNextValue || '-'}.`,
+          action: getAnalysisAction(normalizedPreviousValue, normalizedNextValue),
+          ...overrides
+        })
+      });
+    } catch (error) {
+      console.warn('Failed to record analysis audit event:', error);
+    }
+  };
+
+  const markAnalysisFieldStart = (fieldKey: string, value: string) => {
+    analysisFieldStartValues.current[fieldKey] = value;
+  };
+
+  const commitAnalysisFieldChange = (fieldKey: string, fieldLabel: string, nextValue: string) => {
+    const previousValue = analysisFieldStartValues.current[fieldKey] ?? '';
+    delete analysisFieldStartValues.current[fieldKey];
+    void recordAnalysisChange(fieldKey, fieldLabel, previousValue, nextValue);
+  };
+
+  const startNextAnalysisRun = () => {
+    analysisRunIdRef.current = createAnalysisRunId();
+  };
 
   const resetManualEntry = () => {
     setSelectedSpectralRecordId(null);
@@ -748,7 +772,6 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
 
       setSaveMessage(text.savedMessage);
       await refreshSavedCompounds(savedQuery);
-      reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (_error) {
       setSaveError(text.saveError);
     } finally {
@@ -793,7 +816,6 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
   const exportReportPdf = async (payload = createCurrentReportPayload(), options?: { skipSnapshotSave?: boolean }) => {
     if (!payload.projectId && !payload.projectName) {
       window.alert(text.chooseProjectAlert);
-      reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
 
@@ -807,6 +829,14 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
 
     await logReportExport(payload);
     openPrintableReport(payload);
+    startNextAnalysisRun();
+  };
+
+  const printCurrentReport = async () => {
+    const payload = createCurrentReportPayload();
+    await logReportExport(payload);
+    openPrintableReport(payload);
+    startNextAnalysisRun();
   };
 
   const exportSavedCompoundReport = (compound: SavedCompoundRecord) => {
@@ -956,8 +986,8 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
       </div>
 
       {activeTab === 'calculate' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.55fr] gap-6 lg:gap-8">
-          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8 flex flex-col h-full">
+        <div className="space-y-6 lg:space-y-8">
+          <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className={`rounded-2xl border p-4 ${hasSelectedCompound ? 'border-primary/30 bg-primary/10' : 'border-white/8 bg-white/[0.03]'}`}>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold text-white/35">{text.step1}</p>
@@ -1021,21 +1051,21 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pr-0 sm:pr-2 flex-1 min-h-[750px] xl:max-h-[1800px] content-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 lg:gap-6 overflow-y-auto custom-scrollbar pr-0 sm:pr-2 max-h-[720px] content-start">
               {isLoadingSpectral && (
-                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="lg:col-span-2 2xl:col-span-3 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   {text.loadingSpectral}
                 </div>
               )}
 
               {!isLoadingSpectral && spectralError && (
-                <div className="md:col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+                <div className="lg:col-span-2 2xl:col-span-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
                   {spectralError}
                 </div>
               )}
 
               {!isLoadingSpectral && !spectralError && spectralLibrary.length === 0 && (
-                <div className="md:col-span-2 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
+                <div className="lg:col-span-2 2xl:col-span-3 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-white/55">
                   {text.noSpectralRecords}
                 </div>
               )}
@@ -1094,7 +1124,7 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
 
           </section>
 
-          <section className="space-y-6">
+          <section>
             <div className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03]">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
@@ -1112,7 +1142,10 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
 
               <div className="flex p-1 rounded-xl bg-white/[0.03] border border-white/10 mb-6">
                 <button
-                  onClick={() => setCalcMode('absorbance')}
+                  onClick={() => {
+                    void recordAnalysisChange('calculation_mode', 'Calculation mode', calcMode, 'absorbance');
+                    setCalcMode('absorbance');
+                  }}
                   className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                     calcMode === 'absorbance' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
                   }`}
@@ -1120,7 +1153,10 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
                   {text.findAbsorbance}
                 </button>
                 <button
-                  onClick={() => setCalcMode('concentration')}
+                  onClick={() => {
+                    void recordAnalysisChange('calculation_mode', 'Calculation mode', calcMode, 'concentration');
+                    setCalcMode('concentration');
+                  }}
                   className={`flex-1 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                     calcMode === 'concentration' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
                   }`}
@@ -1129,8 +1165,9 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
                 </button>
               </div>
 
-              <div className="space-y-5">
-                <div className="rounded-2xl border border-primary/20 bg-primary/8 px-4 py-4">
+              <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6 lg:gap-8 items-start">
+                <div className="space-y-5 min-w-0">
+                  <div className="rounded-2xl border border-primary/20 bg-primary/8 px-4 py-4">
                   <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-primary font-bold">
                     {text.currentCompound}
                   </p>
@@ -1160,85 +1197,98 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
                   </div>
                 </div>
 
-                <label className="space-y-2 block">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.pathLength}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={pathLength}
-                    onChange={(event) => setPathLength(event.target.value)}
-                    className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                  />
-                </label>
-
-                {calcMode === 'absorbance' ? (
-                  <label className="space-y-2 block">
-                    <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.concentration}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={concentration}
-                      onChange={(event) => setConcentration(event.target.value)}
-                      className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                    />
-                  </label>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4">
                     <label className="space-y-2 block">
-                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.sampleAbsorbance}</span>
+                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.pathLength}</span>
                       <input
                         type="number"
+                        min="0"
                         step="any"
-                        value={sampleAbsorbance}
-                        onChange={(event) => setSampleAbsorbance(event.target.value)}
+                        value={pathLength}
+                        onFocus={() => markAnalysisFieldStart('path_length', pathLength)}
+                        onChange={(event) => setPathLength(event.target.value)}
+                        onBlur={(event) => commitAnalysisFieldChange('path_length', text.pathLength, event.target.value)}
                         className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
                       />
                     </label>
-                    <label className="space-y-2 block">
-                      <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.blank}</span>
-                      <input
-                        type="number"
-                        step="any"
-                        value={blankAbsorbance}
-                        onChange={(event) => setBlankAbsorbance(event.target.value)}
-                        className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
 
-              <div className="mt-8 rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
-                      {text.result}
-                    </p>
-                    <p className="text-4xl font-display font-bold text-white mt-2">
-                      {calcMode === 'absorbance' ? formatNumber(effectiveAbsorbance) : formatNumber(calculatedConcentration)}
-                    </p>
-                    <p className="text-sm text-white/45 mt-2">
-                      {calcMode === 'absorbance' ? text.targetAbsorbance : text.targetConcentration}
-                    </p>
-                  </div>
-                  <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
-                    <Waves size={34} />
+                    {calcMode === 'absorbance' ? (
+                      <label className="space-y-2 block">
+                        <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.concentration}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={concentration}
+                          onFocus={() => markAnalysisFieldStart('concentration', concentration)}
+                          onChange={(event) => setConcentration(event.target.value)}
+                          onBlur={(event) => commitAnalysisFieldChange('concentration', text.concentration, event.target.value)}
+                          className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                        />
+                      </label>
+                    ) : (
+                      <>
+                        <label className="space-y-2 block">
+                          <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.sampleAbsorbance}</span>
+                          <input
+                            type="number"
+                            step="any"
+                            value={sampleAbsorbance}
+                            onFocus={() => markAnalysisFieldStart('sample_absorbance', sampleAbsorbance)}
+                            onChange={(event) => setSampleAbsorbance(event.target.value)}
+                            onBlur={(event) => commitAnalysisFieldChange('sample_absorbance', text.sampleAbsorbance, event.target.value)}
+                            className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                          />
+                        </label>
+                        <label className="space-y-2 block md:col-span-2 xl:col-span-1">
+                          <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.blank}</span>
+                          <input
+                            type="number"
+                            step="any"
+                            value={blankAbsorbance}
+                            onFocus={() => markAnalysisFieldStart('blank_absorbance', blankAbsorbance)}
+                            onChange={(event) => setBlankAbsorbance(event.target.value)}
+                            onBlur={(event) => commitAnalysisFieldChange('blank_absorbance', text.blank, event.target.value)}
+                            className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
-                  <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">{text.liveFormula}</p>
-                  {calcMode === 'absorbance' ? (
-                    <p className="text-white font-semibold mt-3 break-words">
-                      A = {formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)} × {formatNumber(concentrationValue)} = {formatNumber(effectiveAbsorbance)}
-                    </p>
-                  ) : (
-                    <p className="text-white font-semibold mt-3 break-words">
-                      c = ({formatNumber(sampleAbsValue)} - {formatNumber(blankAbsValue)}) / ({formatNumber(epsilonValue)} × {formatNumber(pathLengthValue)}) = {formatNumber(calculatedConcentration)} mol/L
-                    </p>
-                  )}
+                <div className="min-w-0">
+                  <div className="rounded-[1.5rem] p-6 bg-gradient-to-br from-primary/12 via-white/[0.02] to-secondary/10 border border-white/10">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">
+                          {text.result}
+                        </p>
+                        <p className="text-4xl font-display font-bold text-white mt-2">
+                          {calcMode === 'absorbance' ? formatNumber(effectiveAbsorbance) : formatNumber(calculatedConcentration)}
+                        </p>
+                        <p className="text-sm text-white/45 mt-2">
+                          {calcMode === 'absorbance' ? text.targetAbsorbance : text.targetConcentration}
+                        </p>
+                      </div>
+                      <div className="p-4 sm:p-5 rounded-3xl bg-[#0b1121]/40 border border-white/10 text-secondary self-start sm:self-auto">
+                        <Waves size={34} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-2xl bg-[#08101f]/60 border border-white/8 p-4">
+                      <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30">{text.liveFormula}</p>
+                      {calcMode === 'absorbance' ? (
+                        <p className="text-white font-semibold mt-3 break-words">
+                          A = {formatNumber(epsilonValue)} Ã— {formatNumber(pathLengthValue)} Ã— {formatNumber(concentrationValue)} = {formatNumber(effectiveAbsorbance)}
+                        </p>
+                      ) : (
+                        <p className="text-white font-semibold mt-3 break-words">
+                          c = ({formatNumber(sampleAbsValue)} - {formatNumber(blankAbsValue)}) / ({formatNumber(epsilonValue)} Ã— {formatNumber(pathLengthValue)}) = {formatNumber(calculatedConcentration)} mol/L
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1250,114 +1300,17 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
                 >
                   {isSavingCompound ? text.saving : text.saveToSaved}
                 </button>
-                {saveMessage && <p className="text-sm text-secondary">{saveMessage}</p>}
-                {saveError && <p className="text-sm text-red-300">{saveError}</p>}
-              </div>
-            </div>
-
-            <div ref={reportSectionRef} className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
-                    <Sparkles size={22} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
-                      {text.sessionReport}
-                    </p>
-                    <h2 className="text-2xl font-display font-bold text-white mt-1">
-                      {text.technicalReport}
-                    </h2>
-                  </div>
-                </div>
                 <button
                   onClick={() => {
-                    void exportReportPdf();
+                    void printCurrentReport();
                   }}
-                  className="inline-flex items-center justify-center gap-3 px-5 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all w-full sm:w-auto"
+                  className="inline-flex items-center justify-center gap-3 px-6 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(167,200,255,0.28)] transition-all"
                 >
                   <Download size={16} />
                   {text.printPdf}
                 </button>
-              </div>
-
-              <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-white/30 font-bold">
-                  <FolderOpen size={14} className="text-primary" />
-                  {text.projectDestination}
-                </label>
-                <select
-                  value={selectedReportProjectId}
-                  onChange={(event) => setSelectedReportProjectId(event.target.value)}
-                  className="mt-3 w-full rounded-xl bg-[#101827] border border-white/10 px-4 py-3 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-[#131f34]"
-                >
-                  <option value="">{text.chooseDestination}</option>
-                  {reportProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name} - {project.id}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-white/40">
-                  {selectedReportProject
-                    ? `${selectedReportProject.matrix} - ${selectedReportProject.wavelength}`
-                    : text.projectsLoaded}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.project}</p>
-                  <p className="text-white mt-2 font-semibold">{selectedReportProject?.name || text.notSelected}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.generatedBy}</p>
-                  <p className="text-white mt-2 font-semibold">{currentUser.fullName}</p>
-                  <p className="text-xs text-white/45 mt-2">User ID {currentUser.userId}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.formula}</p>
-                  <p className="text-white mt-2 font-semibold break-words">{calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
-                  <p className="text-xs text-white/45 mt-2">{calcMode === 'absorbance' ? 'A =' : 'c ='} {calcMode === 'absorbance' ? formatNumber(absorbance) : `${formatNumber(calculatedConcentration)} mol/L`}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.compound}</p>
-                  <p className="text-white mt-2 font-semibold">{compoundName || text.notIdentified}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.source}</p>
-                  <p className="text-white mt-2 font-semibold">{source}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">CAS</p>
-                  <p className="text-white mt-2 font-semibold">{casId || 'N/A'}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.lambdaMax}</p>
-                  <p className="text-white mt-2 font-semibold leading-relaxed break-words">{formatWavelengthMax(lambdaMax)}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4 sm:col-span-2">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">{text.solvent}</p>
-                  <p className="text-white mt-2 font-semibold leading-relaxed break-words">{solvent || 'N/A'}</p>
-                </div>
-              </div>
-
-              <div className="rounded-[1.5rem] bg-[#08101f] border border-white/8 p-5 font-mono text-sm text-white/80">
-                <p>--- {text.finalReport} ---</p>
-                <p className="mt-3">{text.generatedBy}: {currentUser.fullName} ({currentUser.userId})</p>
-                <p>{text.formula}: {calcMode === 'absorbance' ? 'A =' : 'c ='} {formulaPreview}</p>
-                <p>{text.project}: {selectedReportProject?.name || text.notSelected}</p>
-                <p className="mt-3">{text.compound}: {compoundName || text.notIdentified}</p>
-                <p>{text.epsilon}: {formatNumber(epsilonValue)} M^-1 cm^-1</p>
-                <p>{text.lambdaMax}: {formatWavelengthMax(lambdaMax)}</p>
-                <p>{text.solvent}: {solvent || 'N/A'}</p>
-                <p>{text.source}: {source}</p>
-                <p>{calcMode === 'absorbance' ? `${text.absorbance}:` : `${text.concentration}:`} {calcMode === 'absorbance' ? formatNumber(absorbance) : `${formatNumber(calculatedConcentration)} mol/L`}</p>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-2xl bg-white/[0.02] border border-white/8 p-4">
-                <FlaskConical size={18} className="text-primary mt-0.5 shrink-0" />
-                <p className="text-sm text-white/55 leading-relaxed">{text.dataFlowDescription}</p>
+                {saveMessage && <p className="text-sm text-secondary">{saveMessage}</p>}
+                {saveError && <p className="text-sm text-red-300">{saveError}</p>}
               </div>
             </div>
           </section>

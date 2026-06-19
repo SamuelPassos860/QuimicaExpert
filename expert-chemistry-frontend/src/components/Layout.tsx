@@ -6,17 +6,21 @@ import {
   Languages,
   LogOut,
   Menu,
+  User,
   X
 } from 'lucide-react';
 import { NAV_ITEMS, OTHER_ITEMS, View } from '../constants';
 import { LANGUAGE_OPTIONS, useLanguage } from '../i18n';
 import type { UserRole } from '../types/auth';
+import vsAnalyticsLogo from '../assets/vs-analytics-logo.png';
+import vsAnalyticsMark from '../assets/vs-analytics-mark.png';
 
 interface LayoutProps {
   children: React.ReactNode;
   activeView: View;
   contentKey: string;
   onViewChange: (view: View) => void;
+  onGlobalSearch: (query: string) => void;
   onLogout: () => void;
   user: {
     name: string;
@@ -53,16 +57,17 @@ function getNavLabelKey(view: View) {
     case 'methods': return 'nav.methods';
     case 'user-management': return 'nav.user-management';
     case 'audit-logs': return 'nav.audit-logs';
-    case 'settings': return 'nav.settings';
     default: return 'nav.dashboard';
   }
 }
 
-export default function Layout({ children, activeView, contentKey, onViewChange, onLogout, user }: LayoutProps) {
+export default function Layout({ children, activeView, contentKey, onViewChange, onGlobalSearch, onLogout, user }: LayoutProps) {
   const { language, setLanguage, t } = useLanguage();
   const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [isHelpOpen, setHelpOpen] = useState(false);
   const [isLanguageOpen, setLanguageOpen] = useState(false);
+  const [isProfileOpen, setProfileOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const initials = user.name
     .split(' ')
     .filter(Boolean)
@@ -84,6 +89,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
   const handleViewChange = (view: View) => {
     setHelpOpen(false);
     setLanguageOpen(false);
+    setProfileOpen(false);
     onViewChange(view);
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -94,6 +100,23 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
   };
 
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user.userRole));
+
+  const handleGlobalSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = globalSearchQuery.trim();
+
+    if (!query) return;
+
+    setHelpOpen(false);
+    setLanguageOpen(false);
+    setProfileOpen(false);
+    onGlobalSearch(query);
+  };
+
+  const handleLogoutClick = () => {
+    setProfileOpen(false);
+    onLogout();
+  };
 
   return (
     <div className="min-h-screen bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
@@ -120,30 +143,12 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
       >
         <div className="flex flex-col h-full scrollbar-none">
           {/* Logo Area */}
-          <div className="h-20 flex items-center gap-4 px-6 mb-8 mt-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(118,243,234,0.15)] group transition-transform hover:scale-105">
-              <motion.div
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-              >
-                <div className="text-[#003734]">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 3.33-1 4.5s3 1 4.5-1M22 2l-1.5 1.5M16.5 4.5L18 3M11 7l1.5 1.5M15 11l1.5 1.5M5 19l1.5 1.5"/><path d="M11 11L7 15l-1.5-1.5L9.5 9.5 11 11z"/><path d="M15 15l-4 4-1.5-1.5 4-4 1.5 1.5z"/><path d="M19 19l-4 4-1.5-1.5 4-4 1.5 1.5z"/><path d="M22 22l-1.5-1.5"/><path d="M9 14l5-5"/></svg>
-                </div>
-              </motion.div>
-            </div>
-            <AnimatePresence>
-              {isSidebarOpen && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="whitespace-nowrap"
-                >
-                  <h1 className="text-lg font-bold tracking-tight text-white font-display">Expert Chemistry</h1>
-                  <p className="text-[9px] uppercase tracking-[0.3em] text-secondary font-mono font-bold">{t('layout.logo.subtitle')}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
+          <div className={`h-20 flex items-center ${isSidebarOpen ? 'justify-start px-6' : 'justify-center px-3'} mb-8 mt-4`}>
+            <img
+              src={isSidebarOpen ? vsAnalyticsLogo : vsAnalyticsMark}
+              alt="VS Analytics"
+              className={isSidebarOpen ? 'h-14 w-full max-w-[210px] object-contain object-left' : 'h-10 w-10 object-contain'}
+            />
           </div>
 
           {/* Navigation */}
@@ -188,23 +193,71 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
             ))}
             
             <div className="pt-6 flex items-center gap-4 px-2">
-              <div className="relative shrink-0 group cursor-pointer">
-                <div className="absolute inset-0 bg-primary/20 blur-md rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                {user.avatar ? (
-                  <img src={user.avatar} alt="User" className="relative w-10 h-10 rounded-xl border border-white/10 p-0.5 object-cover bg-white/5" />
-                ) : (
-                  <div className="relative w-10 h-10 rounded-xl border border-white/10 bg-gradient-to-br from-primary/80 to-secondary/80 flex items-center justify-center text-[#04243d] font-bold text-sm">
-                    {initials || 'U'}
+              <div className="relative flex flex-1 min-w-0 items-center gap-4">
+                <button
+                  id="profile-menu-btn"
+                  type="button"
+                  aria-expanded={isProfileOpen}
+                  aria-controls="profile-menu-panel"
+                  onClick={() => {
+                    setProfileOpen((current) => !current);
+                    setHelpOpen(false);
+                    setLanguageOpen(false);
+                  }}
+                  className={`flex min-w-0 flex-1 items-center gap-4 rounded-xl px-0.5 py-1 text-left transition-all ${
+                    isProfileOpen ? 'bg-white/[0.04]' : 'hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="relative shrink-0 group cursor-pointer">
+                    <div className="absolute inset-0 bg-primary/20 blur-md rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {user.avatar ? (
+                      <img src={user.avatar} alt="User" className="relative w-10 h-10 rounded-xl border border-white/10 p-0.5 object-cover bg-white/5" />
+                    ) : (
+                      <div className="relative w-10 h-10 rounded-xl border border-white/10 bg-gradient-to-br from-primary/80 to-secondary/80 flex items-center justify-center text-[#04243d] font-bold text-sm">
+                        {initials || 'U'}
+                      </div>
+                    )}
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-secondary border-2 border-[#0b1121] rounded-full shadow-[0_0_10px_rgba(118,243,234,0.5)]" />
                   </div>
-                )}
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-secondary border-2 border-[#0b1121] rounded-full shadow-[0_0_10px_rgba(118,243,234,0.5)]" />
+                  {isSidebarOpen && (
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate leading-none mb-1.5">{user.name}</p>
+                      <p className="text-[10px] text-primary font-mono truncate uppercase tracking-widest font-semibold">{user.role}</p>
+                    </div>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {isProfileOpen && (
+                    <motion.div
+                      id="profile-menu-panel"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.18 }}
+                      className={`absolute bottom-14 z-50 rounded-2xl border border-white/10 bg-[#0b1121]/98 p-2 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl ${
+                        isSidebarOpen ? 'left-0 w-full' : 'left-12 w-56'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 border-b border-white/8 px-3 pb-3 pt-2">
+                        <User size={16} className="text-primary" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">{user.name}</p>
+                          <p className="truncate text-[10px] font-mono uppercase tracking-widest text-white/35">{user.role}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleLogoutClick}
+                        className="mt-2 flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-semibold text-white/65 transition-all hover:border-error/20 hover:bg-error/10 hover:text-error"
+                      >
+                        <LogOut size={17} />
+                        {t('layout.logout')}
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-              {isSidebarOpen && (
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-white truncate leading-none mb-1.5">{user.name}</p>
-                  <p className="text-[10px] text-primary font-mono truncate uppercase tracking-widest font-semibold">{user.role}</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -226,14 +279,16 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="relative flex-1 group min-w-0">
+            <form onSubmit={handleGlobalSearch} className="relative flex-1 group min-w-0">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary transition-all group-focus-within:scale-110" />
               <input 
-                type="text" 
+                type="search"
+                value={globalSearchQuery}
+                onChange={(event) => setGlobalSearchQuery(event.target.value)}
                 placeholder={t('layout.search.placeholder')} 
                 className="w-full bg-white/5 border border-white/5 hover:border-white/10 focus:border-primary/20 rounded-xl py-3 pl-12 pr-4 text-sm outline-none transition-all placeholder:text-white/20 focus:bg-white/[0.08] focus:shadow-[0_0_40px_rgba(167,200,255,0.05)]"
               />
-            </div>
+            </form>
           </div>
 
           <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full lg:w-auto">
@@ -247,6 +302,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
                   onClick={() => {
                     setLanguageOpen((current) => !current);
                     setHelpOpen(false);
+                    setProfileOpen(false);
                   }}
                   className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-mono font-bold uppercase tracking-[0.18em] transition-all ${
                     isLanguageOpen
@@ -308,6 +364,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
                 onClick={() => {
                   setHelpOpen((current) => !current);
                   setLanguageOpen(false);
+                  setProfileOpen(false);
                 }}
                 className={`p-2.5 rounded-xl transition-all border ${
                   isHelpOpen
@@ -359,7 +416,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
             </div>
             
             <div className="flex items-center gap-3 sm:gap-6">
-              <button id="logout-btn" title={t('layout.logout')} onClick={onLogout} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
+              <button id="logout-btn" title={t('layout.logout')} onClick={handleLogoutClick} className="p-2.5 text-white/20 hover:text-error hover:bg-error/10 hover:border-error/20 border border-transparent rounded-xl transition-all active:scale-95">
                 <LogOut size={20} />
               </button>
             </div>

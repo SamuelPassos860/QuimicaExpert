@@ -1,14 +1,16 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ShieldCheck, UserCog, UserPlus, Users } from 'lucide-react';
+import { Search, ShieldCheck, UserCog, UserPlus, Users } from 'lucide-react';
 import type { AuthUser, UserRole } from '../types/auth';
 import { useLanguage } from '../i18n';
 
 interface UserManagementProps {
   currentUser: AuthUser;
+  globalSearch?: { query: string; nonce: number };
 }
 
 interface CreateUserFormState {
   userId: string;
+  email: string;
   fullName: string;
   password: string;
   role: UserRole;
@@ -22,9 +24,12 @@ const USER_MANAGEMENT_TEXT = {
     description: 'Public sign-up is closed after setup. Admins create new users here and control who has elevated access.',
     registeredUsers: 'Registered Users',
     admins: 'Admins',
+    searchUsers: 'Search users',
+    searchUsersPlaceholder: 'Search by name, User ID, email or role...',
     accountProvisioning: 'Account Provisioning',
     createNewUser: 'Create a new user',
     userId: 'User ID',
+    email: 'Email',
     fullName: 'Full Name',
     password: 'Password',
     passwordPlaceholder: 'More than 6 characters',
@@ -60,9 +65,12 @@ const USER_MANAGEMENT_TEXT = {
     description: 'O cadastro público fica fechado após a configuração. Administradores criam novos usuários aqui e controlam quem possui acesso elevado.',
     registeredUsers: 'Usuários Registrados',
     admins: 'Administradores',
+    searchUsers: 'Pesquisar usuários',
+    searchUsersPlaceholder: 'Pesquisar por nome, User ID, email ou função...',
     accountProvisioning: 'Provisionamento de Conta',
     createNewUser: 'Criar novo usuário',
     userId: 'ID do Usuário',
+    email: 'Email',
     fullName: 'Nome Completo',
     password: 'Senha',
     passwordPlaceholder: 'Mais de 6 caracteres',
@@ -98,9 +106,12 @@ const USER_MANAGEMENT_TEXT = {
     description: 'El registro público queda cerrado después de la configuración. Los administradores crean nuevos usuarios aquí y controlan quién tiene acceso elevado.',
     registeredUsers: 'Usuarios Registrados',
     admins: 'Administradores',
+    searchUsers: 'Buscar usuarios',
+    searchUsersPlaceholder: 'Buscar por nombre, User ID, email o rol...',
     accountProvisioning: 'Provisionamiento de Cuenta',
     createNewUser: 'Crear nuevo usuario',
     userId: 'ID de Usuario',
+    email: 'Email',
     fullName: 'Nombre Completo',
     password: 'Contraseña',
     passwordPlaceholder: 'Más de 6 caracteres',
@@ -137,12 +148,13 @@ function getApiRole(role: UserRole) {
 
 const INITIAL_CREATE_USER_FORM: CreateUserFormState = {
   userId: '',
+  email: '',
   fullName: '',
   password: '',
   role: 'analyst'
 };
 
-export default function UserManagement({ currentUser }: UserManagementProps) {
+export default function UserManagement({ currentUser, globalSearch }: UserManagementProps) {
   const { language } = useLanguage();
   const text = USER_MANAGEMENT_TEXT[language];
   const [users, setUsers] = useState<AuthUser[]>([]);
@@ -153,6 +165,12 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
   const [pendingUserId, setPendingUserId] = useState<number | null>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [createUserForm, setCreateUserForm] = useState<CreateUserFormState>(INITIAL_CREATE_USER_FORM);
+  const [userSearch, setUserSearch] = useState('');
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setUserSearch(globalSearch.query);
+  }, [globalSearch?.nonce]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -226,7 +244,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
     setCreateUserError(null);
     setCreateUserMessage(null);
 
-    if (!createUserForm.userId.trim() || !createUserForm.fullName.trim() || !createUserForm.password) {
+    if (!createUserForm.userId.trim() || !createUserForm.email.trim() || !createUserForm.fullName.trim() || !createUserForm.password) {
       setCreateUserError(text.fillAll);
       return;
     }
@@ -247,6 +265,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
         },
         body: JSON.stringify({
           userId: createUserForm.userId.trim(),
+          email: createUserForm.email.trim(),
           fullName: createUserForm.fullName.trim(),
           password: createUserForm.password,
           role: getApiRole(createUserForm.role)
@@ -280,6 +299,16 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
     );
   }
 
+  const normalizedUserSearch = userSearch.trim().toLowerCase();
+  const visibleUsers = normalizedUserSearch
+    ? users.filter((user) => [
+        user.fullName,
+        user.userId,
+        user.email,
+        user.role
+      ].some((value) => value.toLowerCase().includes(normalizedUserSearch)))
+    : users;
+
   return (
     <div className="space-y-8 sm:space-y-10">
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
@@ -311,65 +340,78 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[0.95fr_1.05fr] gap-6">
-        <section className="glass-panel rounded-[2rem] p-5 sm:p-6 lg:p-8 border-white/[0.03] space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20">
+      <div className="grid grid-cols-1 gap-6">
+        <section className="glass-panel rounded-[2rem] p-4 sm:p-6 lg:p-8 border-white/[0.03] space-y-6 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 min-w-0">
+            <div className="p-3 rounded-2xl bg-secondary/10 text-secondary border border-secondary/20 self-start shrink-0">
               <UserPlus size={22} />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
                 {text.accountProvisioning}
               </p>
-              <h2 className="text-2xl font-display font-bold text-white mt-1">
+              <h2 className="text-xl sm:text-2xl font-display font-bold text-white mt-1 break-words">
                 {text.createNewUser}
               </h2>
             </div>
           </div>
 
           <form onSubmit={handleCreateUser} className="space-y-5">
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.userId}</span>
-              <input
-                value={createUserForm.userId}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, userId: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder="new_user"
-              />
-            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5 items-end">
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.userId}</span>
+                <input
+                  value={createUserForm.userId}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, userId: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder="new_user"
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.fullName}</span>
-              <input
-                value={createUserForm.fullName}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, fullName: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder="Dr. Ada Lovelace"
-              />
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.email}</span>
+                <input
+                  type="email"
+                  value={createUserForm.email}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, email: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder="chemist@example.com"
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.password}</span>
-              <input
-                type="password"
-                value={createUserForm.password}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, password: event.target.value }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-                placeholder={text.passwordPlaceholder}
-              />
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.fullName}</span>
+                <input
+                  value={createUserForm.fullName}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, fullName: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder="Dr. Ada Lovelace"
+                />
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.role}</span>
-              <select
-                value={createUserForm.role}
-                onChange={(event) => setCreateUserForm((current) => ({ ...current, role: event.target.value as UserRole }))}
-                className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
-              >
-                <option value="analyst">{text.analyst}</option>
-                <option value="admin">{text.admin}</option>
-              </select>
-            </label>
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.password}</span>
+                <input
+                  type="password"
+                  value={createUserForm.password}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, password: event.target.value }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                  placeholder={text.passwordPlaceholder}
+                />
+              </label>
+
+              <label className="block space-y-2 min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-[0.16em] sm:tracking-[0.22em] text-white/40 font-bold break-words">{text.role}</span>
+                <select
+                  value={createUserForm.role}
+                  onChange={(event) => setCreateUserForm((current) => ({ ...current, role: event.target.value as UserRole }))}
+                  className="w-full min-w-0 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
+                >
+                  <option value="analyst">{text.analyst}</option>
+                  <option value="admin">{text.admin}</option>
+                </select>
+              </label>
+            </div>
 
             {createUserError && (
               <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
@@ -386,7 +428,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
             <button
               type="submit"
               disabled={isCreatingUser}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-secondary text-on-secondary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(118,243,234,0.22)] transition-all disabled:opacity-60 disabled:cursor-not-allowed w-full"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-secondary text-on-secondary text-[10px] font-mono uppercase tracking-[0.25em] font-bold hover:shadow-[0_0_30px_rgba(118,243,234,0.22)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <UserPlus size={16} />
               {isCreatingUser ? text.creating : text.createUser}
@@ -411,6 +453,20 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
             </div>
           </div>
 
+          <label className="block space-y-2">
+            <span className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/40 font-bold">{text.searchUsers}</span>
+            <div className="relative">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+              <input
+                type="search"
+                value={userSearch}
+                onChange={(event) => setUserSearch(event.target.value)}
+                className="w-full rounded-xl bg-white/[0.03] border border-white/10 py-3 pl-11 pr-4 text-sm text-white outline-none focus:border-primary/30 placeholder:text-white/25"
+                placeholder={text.searchUsersPlaceholder}
+              />
+            </div>
+          </label>
+
           {error && (
             <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
               {error}
@@ -423,7 +479,7 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              {users.map((user) => {
+              {visibleUsers.map((user) => {
                 const isCurrentUser = user.id === currentUser.id;
                 const nextRole: UserRole = user.role === 'admin' ? 'analyst' : 'admin';
                 const canToggle = !(isCurrentUser && user.role === 'admin');
@@ -439,6 +495,9 @@ export default function UserManagement({ currentUser }: UserManagementProps) {
                         <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                           {user.userId}
                         </p>
+                        {user.email && (
+                          <p className="mt-1 text-xs text-white/45 break-all">{user.email}</p>
+                        )}
                       </div>
 
                       <span

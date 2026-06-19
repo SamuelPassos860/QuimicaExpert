@@ -10,6 +10,7 @@ interface ReportsProps {
   currentUser: AuthUser;
   initialProjectKey?: string;
   initialProjectLabel?: string;
+  globalSearch?: { query: string; nonce: number };
 }
 
 const REPORTS_TEXT = {
@@ -19,7 +20,7 @@ const REPORTS_TEXT = {
     description: 'Reopen previously generated spectrophotometry reports without rebuilding the calculation.',
     adminScope: 'Administrators can review the complete shared archive.',
     userScope: 'This view is scoped to the reports generated from your account.',
-    searchPlaceholder: 'Search inside selected project...',
+    searchPlaceholder: 'Search reports, projects, compounds, CAS or dates...',
     selectProject: 'Select a project',
     reports: 'reports',
     lastResult: 'Last result',
@@ -47,7 +48,7 @@ const REPORTS_TEXT = {
     description: 'Reabra relatórios de espectrofotometria gerados anteriormente sem refazer o cálculo.',
     adminScope: 'Administradores podem revisar o arquivo compartilhado completo.',
     userScope: 'Esta visualização mostra apenas os relatórios gerados pela sua conta.',
-    searchPlaceholder: 'Pesquisar dentro do projeto selecionado...',
+    searchPlaceholder: 'Pesquisar relatórios, projetos, compostos, CAS ou datas...',
     selectProject: 'Selecione um projeto',
     reports: 'relatórios',
     lastResult: 'Último resultado',
@@ -75,7 +76,7 @@ const REPORTS_TEXT = {
     description: 'Reabre informes de espectrofotometría generados anteriormente sin reconstruir el cálculo.',
     adminScope: 'Los administradores pueden revisar el archivo compartido completo.',
     userScope: 'Esta vista muestra solo los informes generados desde tu cuenta.',
-    searchPlaceholder: 'Buscar dentro del proyecto seleccionado...',
+    searchPlaceholder: 'Buscar informes, proyectos, compuestos, CAS o fechas...',
     selectProject: 'Selecciona un proyecto',
     reports: 'informes',
     lastResult: 'Último resultado',
@@ -101,6 +102,33 @@ const REPORTS_TEXT = {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString('pt-BR');
+}
+
+function getDateSearchTerms(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return [value];
+  }
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return [
+    value,
+    formatDateTime(value),
+    `${day}/${month}/${year}`,
+    `${day}/${month}`,
+    `${month}/${year}`,
+    `${year}-${month}-${day}`,
+    `${year}/${month}/${day}`,
+    `${day}-${month}-${year}`,
+    `${day}.${month}.${year}`,
+    `${hours}:${minutes}`
+  ];
 }
 
 function formatNumber(value: number) {
@@ -152,21 +180,47 @@ function projectMatchesKey(project: { key: string; label: string }, key: string)
   );
 }
 
+function projectMatchesSearch(project: { key: string; label: string }, search: string) {
+  const normalizedSearch = search.trim().toLowerCase();
+  const normalizedProjectSearch = normalizeProjectKey(search);
+
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  return [
+    project.key,
+    project.label,
+    normalizeProjectKey(project.key),
+    normalizeProjectKey(project.label)
+  ].some((value) => (
+    value.toLowerCase().includes(normalizedSearch)
+    || value.toLowerCase().includes(normalizedProjectSearch)
+  ));
+}
+
 function getReportAnalysis(report: StoredReport) {
   const [, ...analysisParts] = report.compoundName.split(' - ');
   return analysisParts.join(' - ').trim() || report.source || 'Analytical report';
 }
 
-export default function Reports({ currentUser, initialProjectKey, initialProjectLabel }: ReportsProps) {
+export default function Reports({ currentUser, initialProjectKey, initialProjectLabel, globalSearch }: ReportsProps) {
   const { language } = useLanguage();
   const text = REPORTS_TEXT[language];
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
+  const [projectQuery, setProjectQuery] = useState(initialProjectLabel ?? initialProjectKey ?? '');
+  const deferredProjectQuery = useDeferredValue(projectQuery);
   const [reports, setReports] = useState<StoredReport[]>([]);
   const [selectedProjectKey, setSelectedProjectKey] = useState(initialProjectKey ?? '');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!globalSearch) return;
+    setQuery(globalSearch.query);
+  }, [globalSearch?.nonce]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -237,11 +291,13 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
   useEffect(() => {
     if (!initialProjectKey && !initialProjectLabel) {
       setSelectedProjectKey('');
+      setProjectQuery('');
       return;
     }
 
     if (projectOptions.length === 0) {
       setSelectedProjectKey(initialProjectKey ?? '');
+      setProjectQuery(initialProjectLabel ?? initialProjectKey ?? '');
       return;
     }
 
@@ -252,29 +308,44 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
     ));
 
     setSelectedProjectKey(matchingProject?.key ?? initialProjectKey ?? '');
+    setProjectQuery(matchingProject?.label ?? initialProjectLabel ?? initialProjectKey ?? '');
   }, [initialProjectKey, initialProjectLabel, projectOptions]);
 
-  const visibleReports = useMemo(() => {
-    if (!selectedProjectKey) return [];
+  const filteredProjectOptions = useMemo(() => (
+    projectOptions.filter((project) => projectMatchesSearch(project, deferredProjectQuery))
+  ), [deferredProjectQuery, projectOptions]);
 
+  const visibleReports = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
+    const normalizedProjectQuery = deferredProjectQuery.trim();
 
     return reports.filter((report) => {
       const project = getReportProject(report);
-      if (project.key !== selectedProjectKey) return false;
+      if (selectedProjectKey && project.key !== selectedProjectKey) return false;
+      if (!selectedProjectKey && normalizedProjectQuery && !projectMatchesSearch(project, normalizedProjectQuery)) return false;
       if (!normalizedQuery) return true;
 
       return [
         report.reportId,
+        report.projectId || '',
+        report.projectName || '',
+        project.key,
+        project.label,
         report.compoundName,
         report.casId,
+        report.lambdaMax,
+        report.solvent,
         report.source,
         report.generatedByName,
         report.generatedByUserId,
+        report.owner.fullName,
+        report.owner.userId,
+        ...getDateSearchTerms(report.generatedAt),
+        ...getDateSearchTerms(report.createdAt),
         getReportAnalysis(report)
-      ].some((value) => value.toLowerCase().includes(normalizedQuery));
+      ].some((value) => String(value).toLowerCase().includes(normalizedQuery));
     });
-  }, [deferredQuery, reports, selectedProjectKey]);
+  }, [deferredProjectQuery, deferredQuery, reports, selectedProjectKey]);
 
   useEffect(() => {
     if (!selectedProjectKey) return;
@@ -287,6 +358,7 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
 
     if (matchingProject.key !== selectedProjectKey) {
       setSelectedProjectKey(matchingProject.key);
+      setProjectQuery(matchingProject.label);
     }
   }, [projectOptions, selectedProjectKey]);
 
@@ -345,31 +417,34 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
             />
           </div>
 
-          <select
-            value={selectedProjectKey}
-            onChange={(event) => setSelectedProjectKey(event.target.value)}
-            className="w-full rounded-2xl bg-[#101827] border border-white/10 px-4 py-4 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-[#131f34]"
-          >
-            <option value="">{text.selectProject}</option>
-            {projectOptions.map((project) => (
-              <option key={project.key} value={project.key}>
-                {project.label} ({project.reports})
-              </option>
-            ))}
-          </select>
+          <div className="relative group">
+            <FolderOpen size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-primary transition-colors" />
+            <input
+              value={projectQuery}
+              onChange={(event) => {
+                setProjectQuery(event.target.value);
+                setSelectedProjectKey('');
+              }}
+              placeholder={text.selectProject}
+              className="w-full rounded-2xl bg-white/[0.03] border border-white/10 pl-12 pr-4 py-4 text-sm text-white outline-none transition-all focus:border-primary/30 focus:bg-white/[0.06]"
+            />
+          </div>
         </div>
       </div>
 
-      {!isLoading && !error && projectOptions.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {projectOptions.map((project) => {
+      {!isLoading && !error && filteredProjectOptions.length > 0 && (
+        <div className="grid grid-flow-col auto-cols-[minmax(220px,260px)] sm:auto-cols-[minmax(240px,280px)] gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-2">
+          {filteredProjectOptions.map((project) => {
             const isSelected = selectedProjectKey === project.key;
 
             return (
               <button
                 key={project.key}
                 type="button"
-                onClick={() => setSelectedProjectKey(project.key)}
+                onClick={() => {
+                  setSelectedProjectKey(project.key);
+                  setProjectQuery(project.label);
+                }}
                 className={`text-left rounded-2xl border p-4 transition-all ${
                   isSelected
                     ? 'bg-primary/10 border-primary/40 shadow-[0_0_0_1px_rgba(20,184,166,0.16)]'
@@ -411,13 +486,13 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
           </div>
         )}
 
-        {!isLoading && !error && reports.length > 0 && !selectedProjectKey && (
+        {!isLoading && !error && reports.length > 0 && !selectedProjectKey && !deferredProjectQuery.trim() && !deferredQuery.trim() && (
           <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
             {text.selectProjectEmpty}
           </div>
         )}
 
-        {!isLoading && !error && selectedProjectKey && visibleReports.length === 0 && (
+        {!isLoading && !error && (selectedProjectKey || deferredProjectQuery.trim() || deferredQuery.trim()) && visibleReports.length === 0 && (
           <div className="xl:col-span-2 glass-panel rounded-2xl p-6 text-sm text-white/55 border-white/10">
             {text.noProjectReports}
           </div>
@@ -469,9 +544,6 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
                     <h3 className="text-xl font-display font-bold text-white group-hover:text-primary transition-colors leading-tight">
                       {project.label}
                     </h3>
-                    <span className="text-[9px] px-3 py-1 rounded-full font-bold uppercase tracking-widest border text-green-400 bg-green-400/5 border-green-400/20">
-                      {text.savedSnapshot}
-                    </span>
                   </div>
                   <p className="text-white/55 mt-2 text-sm font-semibold">{analysis}</p>
                   <div className="flex flex-wrap items-center gap-3 mt-3 text-xs">

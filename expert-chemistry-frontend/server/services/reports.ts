@@ -28,7 +28,24 @@ const listReportsQuery = `
   FROM reports
   WHERE
     ($1::boolean = true OR owner_user_id = $2)
-    AND ($3 = '' OR report_id ILIKE $3 OR project_id ILIKE $3 OR project_name ILIKE $3 OR compound_name ILIKE $3 OR cas_id ILIKE $3)
+    AND (
+      $3 = ''
+      OR report_id ILIKE $3
+      OR project_id ILIKE $3
+      OR project_name ILIKE $3
+      OR compound_name ILIKE $3
+      OR cas_id ILIKE $3
+      OR owner_user_identifier ILIKE $3
+      OR owner_full_name ILIKE $3
+      OR to_char(generated_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY') ILIKE $3
+      OR to_char(generated_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM') ILIKE $3
+      OR to_char(generated_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') ILIKE $3
+      OR to_char(generated_at AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI') ILIKE $3
+      OR to_char(created_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY') ILIKE $3
+      OR to_char(created_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM') ILIKE $3
+      OR to_char(created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') ILIKE $3
+      OR to_char(created_at AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI') ILIKE $3
+    )
   ORDER BY created_at DESC, id DESC
   LIMIT 500;
 `;
