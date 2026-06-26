@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { createAuditLog } from '../services/audit.js';
 import {
   confirmEmailVerificationCode,
@@ -29,6 +29,32 @@ function normalizeEmail(value: unknown) {
 
 function normalizeCode(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function getPublicAppUrl(request: Request) {
+  const configuredUrl = process.env.APP_PUBLIC_URL?.trim();
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/$/, '');
+  }
+
+  const origin = request.get('origin');
+
+  if (origin) {
+    return origin.replace(/\/$/, '');
+  }
+
+  const referer = request.get('referer');
+
+  if (referer) {
+    try {
+      return new URL(referer).origin.replace(/\/$/, '');
+    } catch {
+      // Fall through to the API host when the referer is malformed.
+    }
+  }
+
+  return `${request.protocol}://${request.get('host')}`.replace(/\/$/, '');
 }
 
 router.get('/setup-status', async (_request, response) => {
@@ -134,8 +160,7 @@ router.post('/forgot-password', async (request, response) => {
     const resetRequest = await createPasswordResetTokenForUser(validation.data!.userId);
 
     if (resetRequest?.user.email) {
-      const publicUrl = process.env.APP_PUBLIC_URL || `${request.protocol}://${request.get('host')}`;
-      const resetUrl = `${publicUrl.replace(/\/$/, '')}/#/reset-password?token=${encodeURIComponent(resetRequest.token)}`;
+      const resetUrl = `${getPublicAppUrl(request)}/#/reset-password?token=${encodeURIComponent(resetRequest.token)}`;
 
       if (isEmailDeliveryConfigured()) {
         await sendMail({
