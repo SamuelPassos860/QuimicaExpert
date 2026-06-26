@@ -295,20 +295,23 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
     const applyModeFromHash = () => {
       const hashValue = window.location.hash.replace(/^#\/?/, '');
       const [hashMode, hashQuery = ''] = hashValue.split('?');
+      const pathMode = window.location.pathname.replace(/^\/+/, '').split('/')[0];
+      const modeFromUrl = hashMode || pathMode;
+      const queryFromUrl = hashQuery || window.location.search.replace(/^\?/, '');
 
-      if (hashMode === 'forgot-password') {
+      if (modeFromUrl === 'forgot-password') {
         setMode('forgot-password');
         return;
       }
 
-      if (hashMode === 'reset-password') {
-        const token = new URLSearchParams(hashQuery).get('token') || '';
+      if (modeFromUrl === 'reset-password') {
+        const token = new URLSearchParams(queryFromUrl).get('token') || '';
         setMode('reset-password');
         setForm((current) => ({ ...current, resetToken: token }));
         return;
       }
 
-      if (hashMode === 'signup') {
+      if (modeFromUrl === 'signup') {
         setMode('signup');
         return;
       }
@@ -341,7 +344,7 @@ export default function AuthView({ onAuthenticated }: AuthViewProps) {
           const shouldAllowSignup = payload.allowPublicSignup === true;
           setAllowPublicSignup(shouldAllowSignup);
           if (!shouldAllowSignup) {
-            setMode('login');
+            setMode((currentMode) => (currentMode === 'signup' ? 'login' : currentMode));
           }
         }
       } catch (requestError) {
