@@ -828,14 +828,14 @@ export default function Spectrophotometry({ currentUser, initialTab = 'calculate
     }
 
     await logReportExport(payload);
-    openPrintableReport(payload);
+    openPrintableReport(payload, language);
     startNextAnalysisRun();
   };
 
   const printCurrentReport = async () => {
     const payload = createCurrentReportPayload();
     await logReportExport(payload);
-    openPrintableReport(payload);
+    openPrintableReport(payload, language);
     startNextAnalysisRun();
   };
 

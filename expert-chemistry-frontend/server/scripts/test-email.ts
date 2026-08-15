@@ -21,9 +21,9 @@ async function main() {
 
   await sendMail({
     to,
-    subject: 'Expert Chemistry email test',
+    subject: 'VS Analytics email test',
     text: [
-      'This is a test email from Expert Chemistry.',
+      'This is a test email from VS Analytics.',
       '',
       'If you received this message, SMTP delivery is configured correctly.'
     ].join('\n')

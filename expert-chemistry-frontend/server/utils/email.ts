@@ -13,7 +13,7 @@ function getSmtpPort() {
 }
 
 function getMailFrom() {
-  return process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@quimicaexpert.local';
+  return process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@vsanalytics.local';
 }
 
 function getEnvelopeAddress(value: string) {

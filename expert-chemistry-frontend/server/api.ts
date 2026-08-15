@@ -7,5 +7,5 @@ void initializeServer().catch((error) => {
 });
 
 app.listen(port, () => {
-  console.log(`Expert Chemistry API listening on http://localhost:${port}`);
+  console.log(`VS Analytics API listening on http://localhost:${port}`);
 });

@@ -386,14 +386,14 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
 
     try {
       await logReportExport(report);
-      openPrintableReport(report);
+      openPrintableReport(report, language);
     } finally {
       setActiveReportId(null);
     }
   };
 
   return (
-    <div className="space-y-8 sm:space-y-10">
+    <div className="min-w-0 max-w-full overflow-x-hidden space-y-8 sm:space-y-10">
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -433,7 +433,7 @@ export default function Reports({ currentUser, initialProjectKey, initialProject
       </div>
 
       {!isLoading && !error && filteredProjectOptions.length > 0 && (
-        <div className="grid grid-flow-col auto-cols-[minmax(220px,260px)] sm:auto-cols-[minmax(240px,280px)] gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-2">
+        <div className="min-w-0 max-w-full grid grid-flow-col auto-cols-[minmax(220px,260px)] sm:auto-cols-[minmax(240px,280px)] gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-2">
           {filteredProjectOptions.map((project) => {
             const isSelected = selectedProjectKey === project.key;
 
