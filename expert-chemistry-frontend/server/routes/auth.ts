@@ -165,11 +165,11 @@ router.post('/forgot-password', async (request, response) => {
       if (isEmailDeliveryConfigured()) {
         await sendMail({
           to: resetRequest.user.email,
-          subject: 'Expert Chemistry password reset confirmation',
+          subject: 'VS Analytics password reset confirmation',
           text: [
             `Hello ${resetRequest.user.fullName},`,
             '',
-            'We received a request to reset your Expert Chemistry password.',
+            'We received a request to reset your VS Analytics password.',
             'Confirm this request by opening the secure link below:',
             '',
             resetUrl,
@@ -235,11 +235,11 @@ router.post('/email-verification/request', requireAuth, async (request, response
     if (isEmailDeliveryConfigured()) {
       await sendMail({
         to: verification.email,
-        subject: 'Expert Chemistry email confirmation code',
+        subject: 'VS Analytics email confirmation code',
         text: [
           `Hello ${verification.user.fullName},`,
           '',
-          'Use the code below to confirm your email address in Expert Chemistry:',
+          'Use the code below to confirm your email address in VS Analytics:',
           '',
           verification.code,
           '',

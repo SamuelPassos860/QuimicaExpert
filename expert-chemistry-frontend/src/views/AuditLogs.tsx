@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { Download, ScrollText, ShieldCheck } from 'lucide-react';
 import type { AuditLog, AuditLogEventType, AuditLogFilters } from '../types/audit';
-import { useLanguage } from '../i18n';
+import { useLanguage, type Language } from '../i18n';
 
 const EVENT_TYPE_LABELS: Record<AuditLogEventType, string> = {
   login: 'User Login',
@@ -48,6 +48,7 @@ const AUDIT_TEXT = {
     details: 'Details',
     noMetadata: 'No additional metadata was captured for this event.',
     systemSession: 'System session',
+    analysisSteps: 'analysis steps', generateReport: 'Generate audit trail report', workflowAction: 'Analysis workflow', process: 'Analysis process', step: 'Step', from: 'From', to: 'to',
     eventLabels: EVENT_TYPE_LABELS,
     selectLabels: {
       login: 'Login',
@@ -83,6 +84,7 @@ const AUDIT_TEXT = {
     details: 'Detalhes',
     noMetadata: 'Nenhum metadado adicional foi capturado para este evento.',
     systemSession: 'Sessão do sistema',
+    analysisSteps: 'etapas da análise', generateReport: 'Gerar relatório da trilha de auditoria', workflowAction: 'Fluxo da análise', process: 'Processo da análise', step: 'Etapa', from: 'De', to: 'para',
     eventLabels: {
       login: 'Login do Usuário',
       logout: 'Logout do Usuário',
@@ -97,6 +99,9 @@ const AUDIT_TEXT = {
       login: 'Login',
       logout: 'Logout',
       email_confirmed: 'Email confirmado',
+      user_created: 'Usuário criado',
+      analysis_field_changed: 'Etapa da análise',
+      analysis_report_printed: 'Relatório impresso',
       password_reset_requested: 'Redefinição de senha solicitada',
       password_reset_completed: 'Redefinição de senha concluída',
       compound_saved: 'Composto salvo',
@@ -124,6 +129,7 @@ const AUDIT_TEXT = {
     details: 'Detalles',
     noMetadata: 'No se capturaron metadatos adicionales para este evento.',
     systemSession: 'Sesión del sistema',
+    analysisSteps: 'pasos del análisis', generateReport: 'Generar informe de auditoría', workflowAction: 'Flujo del análisis', process: 'Proceso del análisis', step: 'Paso', from: 'De', to: 'a',
     eventLabels: {
       login: 'Inicio de Sesión',
       logout: 'Cierre de Sesión',
@@ -138,6 +144,9 @@ const AUDIT_TEXT = {
       login: 'Inicio de sesión',
       logout: 'Cierre de sesión',
       email_confirmed: 'Email confirmado',
+      user_created: 'Usuario creado',
+      analysis_field_changed: 'Paso del análisis',
+      analysis_report_printed: 'Informe impreso',
       password_reset_requested: 'Restablecimiento solicitado',
       password_reset_completed: 'Restablecimiento completado',
       compound_saved: 'Compuesto guardado',
@@ -162,7 +171,12 @@ function getAuditTargetLabel(log: AuditLog, fallback: string) {
   return log.resourceKey || fallback;
 }
 
-function getAuditSentence(log: AuditLog) {
+function getAuditSentence(log: AuditLog, language: Language = 'en') {
+  const sentenceText = {
+    en: { changed: 'changed', from: 'from', to: 'to', cleared: 'cleared the value of', previously: 'previously', filled: 'filled', with: 'with', printed: 'printed the analytical report', saved: 'saved compound', deleted: 'deleted compound', created: 'created user', unidentified: 'unidentified' },
+    pt: { changed: 'alterou', from: 'de', to: 'para', cleared: 'apagou o valor de', previously: 'antes', filled: 'preencheu', with: 'com', printed: 'imprimiu o relatório analítico', saved: 'salvou o composto', deleted: 'apagou o composto', created: 'criou o usuário', unidentified: 'sem identificação' },
+    es: { changed: 'cambió', from: 'de', to: 'a', cleared: 'borró el valor de', previously: 'antes', filled: 'completó', with: 'con', printed: 'imprimió el informe analítico', saved: 'guardó el compuesto', deleted: 'eliminó el compuesto', created: 'creó el usuario', unidentified: 'sin identificación' }
+  }[language];
   const actor = log.actor.fullName || log.actor.userId;
   const fieldLabel = typeof log.metadata.fieldLabel === 'string' ? log.metadata.fieldLabel : 'field';
   const previousValue = typeof log.metadata.previousValue === 'string' ? log.metadata.previousValue : '';
@@ -173,28 +187,28 @@ function getAuditSentence(log: AuditLog) {
 
   switch (log.eventType) {
     case 'analysis_field_changed':
-      if (stepDescription) {
+      if (stepDescription && language === 'en') {
         return `${actor}: ${stepDescription}`;
       }
 
       if (previousValue && nextValue) {
-        return `${actor} alterou ${fieldLabel} de "${previousValue}" para "${nextValue}".`;
+        return `${actor} ${sentenceText.changed} ${fieldLabel} ${sentenceText.from} "${previousValue}" ${sentenceText.to} "${nextValue}".`;
       }
 
       if (previousValue && !nextValue) {
-        return `${actor} apagou o valor de ${fieldLabel}, antes "${previousValue}".`;
+        return `${actor} ${sentenceText.cleared} ${fieldLabel}, ${sentenceText.previously} "${previousValue}".`;
       }
 
-      return `${actor} preencheu ${fieldLabel} com "${nextValue}".`;
+      return `${actor} ${sentenceText.filled} ${fieldLabel} ${sentenceText.with} "${nextValue}".`;
     case 'analysis_report_printed':
     case 'pdf_exported':
-      return `${actor} imprimiu o relatorio analitico${compoundName ? ` de ${compoundName}` : ''}.`;
+      return `${actor} ${sentenceText.printed}${compoundName ? ` — ${compoundName}` : ''}.`;
     case 'compound_saved':
-      return `${actor} salvou o composto ${compoundName || log.resourceKey || 'sem identificacao'}.`;
+      return `${actor} ${sentenceText.saved} ${compoundName || log.resourceKey || sentenceText.unidentified}.`;
     case 'compound_deleted':
-      return `${actor} apagou o composto ${compoundName || log.resourceKey || 'sem identificacao'}.`;
+      return `${actor} ${sentenceText.deleted} ${compoundName || log.resourceKey || sentenceText.unidentified}.`;
     case 'user_created':
-      return `${actor} criou o usuario ${createdFullName || log.resourceKey || 'sem identificacao'}.`;
+      return `${actor} ${sentenceText.created} ${createdFullName || log.resourceKey || sentenceText.unidentified}.`;
     default:
       return `${actor}: ${log.eventType}.`;
   }
@@ -209,11 +223,16 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#039;');
 }
 
-function openAnalysisStepsReport(logs: AuditLog[]) {
+function openAnalysisStepsReport(logs: AuditLog[], language: Language) {
+  const reportText = {
+    en: { title: 'Analysis Steps Audit Report', subtitle: 'Complete traceability report for the selected analysis steps.', reportId: 'Report ID', generated: 'Generated at', user: 'User', project: 'Project', method: 'Method used', workflow: 'Workflow', window: 'Analysis window', registered: 'Registered steps', scope: 'Scope', scopeValue: 'Analysis Step events only', trail: 'Step-by-step audit trail', dateTime: 'Date/time', step: 'Step', previous: 'Previous', next: 'Next', process: 'Process line', empty: 'No analysis steps available.', popup: 'Unable to open the analysis steps report. Allow pop-ups for this site and try again.' },
+    pt: { title: 'Relatório da Trilha de Etapas da Análise', subtitle: 'Relatório completo de rastreabilidade das etapas de análise selecionadas.', reportId: 'ID do relatório', generated: 'Gerado em', user: 'Usuário', project: 'Projeto', method: 'Método utilizado', workflow: 'Fluxo', window: 'Janela da análise', registered: 'Etapas registradas', scope: 'Escopo', scopeValue: 'Somente eventos de etapas da análise', trail: 'Trilha de auditoria passo a passo', dateTime: 'Data/hora', step: 'Etapa', previous: 'Anterior', next: 'Próximo', process: 'Linha do processo', empty: 'Nenhuma etapa de análise disponível.', popup: 'Não foi possível abrir o relatório da análise. Permita pop-ups e tente novamente.' },
+    es: { title: 'Informe de Auditoría de Pasos del Análisis', subtitle: 'Informe completo de trazabilidad de los pasos de análisis seleccionados.', reportId: 'ID del informe', generated: 'Generado el', user: 'Usuario', project: 'Proyecto', method: 'Método utilizado', workflow: 'Flujo', window: 'Ventana del análisis', registered: 'Pasos registrados', scope: 'Alcance', scopeValue: 'Solo eventos de pasos del análisis', trail: 'Auditoría paso a paso', dateTime: 'Fecha/hora', step: 'Paso', previous: 'Anterior', next: 'Siguiente', process: 'Línea del proceso', empty: 'No hay pasos de análisis disponibles.', popup: 'No se pudo abrir el informe de análisis. Permite ventanas emergentes e inténtalo de nuevo.' }
+  }[language];
   const reportWindow = window.open('', '_blank', 'width=980,height=760');
 
   if (!reportWindow) {
-    window.alert('Unable to open the analysis steps report. Allow pop-ups for this site and try again.');
+    window.alert(reportText.popup);
     return;
   }
 
@@ -241,7 +260,9 @@ function openAnalysisStepsReport(logs: AuditLog[]) {
       const fieldLabel = typeof log.metadata.fieldLabel === 'string' ? log.metadata.fieldLabel : '';
       const previousValue = typeof log.metadata.previousValue === 'string' ? log.metadata.previousValue : '';
       const nextValue = typeof log.metadata.nextValue === 'string' ? log.metadata.nextValue : '';
-      const stepDescription = typeof log.metadata.stepDescription === 'string' ? log.metadata.stepDescription : getAuditSentence(log);
+      const stepDescription = language === 'en' && typeof log.metadata.stepDescription === 'string'
+        ? log.metadata.stepDescription
+        : getAuditSentence(log, language);
 
       return `
         <tr>
@@ -265,7 +286,7 @@ function openAnalysisStepsReport(logs: AuditLog[]) {
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>Analysis Steps Audit Report</title>
+        <title>${escapeHtml(reportText.title)}</title>
         <style>
           body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
           h1 { margin: 0; font-size: 28px; }
@@ -294,23 +315,23 @@ function openAnalysisStepsReport(logs: AuditLog[]) {
         <button onclick="window.print()">Print / Save PDF</button>
         <section class="cover">
           <div>
-            <p class="eyebrow">Expert Chemistry Audit Trail</p>
-            <h1>Analysis Steps Audit Report</h1>
+            <p class="eyebrow">VS Analytics Audit Trail</p>
+            <h1>${escapeHtml(reportText.title)}</h1>
             <p class="subtitle">
-              Complete traceability report for the selected analysis steps. This document is intentionally restricted
+              ${escapeHtml(reportText.subtitle)} This document is intentionally restricted
               to Analysis Step events and lists each recorded process line in chronological order.
             </p>
             <div class="summary-grid">
-              <div class="summary-card"><strong>Report ID</strong><span>${escapeHtml(reportId)}</span></div>
-              <div class="summary-card"><strong>Generated at</strong><span>${escapeHtml(new Date().toLocaleString('pt-BR'))}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.reportId)}</strong><span>${escapeHtml(reportId)}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.generated)}</strong><span>${escapeHtml(new Date().toLocaleString('pt-BR'))}</span></div>
               <div class="summary-card"><strong>Project</strong><span>${escapeHtml(formatList(projects))}</span></div>
               <div class="summary-card"><strong>Project ID</strong><span>${escapeHtml(formatList(projectIds))}</span></div>
-              <div class="summary-card"><strong>Method used</strong><span>${escapeHtml(formatList(methods))}</span></div>
-              <div class="summary-card"><strong>Workflow</strong><span>${escapeHtml(formatList(workflows))}</span></div>
-              <div class="summary-card"><strong>User</strong><span>${escapeHtml(formatList(responsibleUsers))}</span></div>
-              <div class="summary-card"><strong>Analysis window</strong><span>${escapeHtml(firstStepAt)} to ${escapeHtml(lastStepAt)}</span></div>
-              <div class="summary-card"><strong>Registered steps</strong><span>${stepLogs.length}</span></div>
-              <div class="summary-card"><strong>Scope</strong><span>Analysis Step events only</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.method)}</strong><span>${escapeHtml(formatList(methods))}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.workflow)}</strong><span>${escapeHtml(formatList(workflows))}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.user)}</strong><span>${escapeHtml(formatList(responsibleUsers))}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.window)}</strong><span>${escapeHtml(firstStepAt)} — ${escapeHtml(lastStepAt)}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.registered)}</strong><span>${stepLogs.length}</span></div>
+              <div class="summary-card"><strong>${escapeHtml(reportText.scope)}</strong><span>${escapeHtml(reportText.scopeValue)}</span></div>
             </div>
           </div>
           <p class="certification">
@@ -318,22 +339,22 @@ function openAnalysisStepsReport(logs: AuditLog[]) {
             field changes, equipment readings, imported data, selected calculation points, and report generation steps.
           </p>
         </section>
-        <h2>Step-by-step audit trail</h2>
+        <h2>${escapeHtml(reportText.trail)}</h2>
         <table>
           <thead>
             <tr>
               <th>#</th>
-              <th>Date/time</th>
-              <th>User</th>
-              <th>Project</th>
-              <th>Workflow</th>
-              <th>Step</th>
-              <th>Previous</th>
-              <th>Next</th>
-              <th>Process line</th>
+              <th>${escapeHtml(reportText.dateTime)}</th>
+              <th>${escapeHtml(reportText.user)}</th>
+              <th>${escapeHtml(reportText.project)}</th>
+              <th>${escapeHtml(reportText.workflow)}</th>
+              <th>${escapeHtml(reportText.step)}</th>
+              <th>${escapeHtml(reportText.previous)}</th>
+              <th>${escapeHtml(reportText.next)}</th>
+              <th>${escapeHtml(reportText.process)}</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="9">No analysis steps available.</td></tr>'}</tbody>
+          <tbody>${rows || `<tr><td colspan="9">${escapeHtml(reportText.empty)}</td></tr>`}</tbody>
         </table>
       </body>
     </html>
@@ -524,10 +545,10 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
               className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-primary/30"
             >
               <option value="">{text.allEvents}</option>
-              <option value="analysis_field_changed">{EVENT_TYPE_LABELS.analysis_field_changed}</option>
-              <option value="user_created">{EVENT_TYPE_LABELS.user_created}</option>
-              <option value="compound_saved">{EVENT_TYPE_LABELS.compound_saved}</option>
-              <option value="compound_deleted">{EVENT_TYPE_LABELS.compound_deleted}</option>
+              <option value="analysis_field_changed">{text.selectLabels.analysis_field_changed}</option>
+              <option value="user_created">{text.selectLabels.user_created}</option>
+              <option value="compound_saved">{text.selectLabels.compound_saved}</option>
+              <option value="compound_deleted">{text.selectLabels.compound_deleted}</option>
             </select>
           </label>
 
@@ -583,7 +604,7 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
                               {group.projectName} - {group.methodName}
                             </p>
                             <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
-                              {group.workflow} • {group.logs.length} analysis steps • {group.userLabel}
+                              {group.workflow} • {group.logs.length} {text.analysisSteps} • {group.userLabel}
                             </p>
                           </div>
                         </div>
@@ -596,11 +617,11 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
                         </div>
                         <button
                           type="button"
-                          onClick={() => openAnalysisStepsReport(group.logs)}
+                          onClick={() => openAnalysisStepsReport(group.logs, language)}
                           className="rounded-xl bg-secondary px-4 py-3 text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-on-secondary transition-all hover:shadow-[0_0_24px_rgba(118,243,234,0.18)] flex items-center justify-center gap-2"
                         >
                           <Download size={16} />
-                          Generate audit trail report
+                          {text.generateReport}
                         </button>
                       </div>
                     </div>
@@ -613,7 +634,7 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
                       </div>
                       <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                         <p className="text-white/30 font-mono uppercase tracking-widest">{text.action}</p>
-                        <p className="text-white mt-2 font-semibold">Analysis workflow</p>
+                        <p className="text-white mt-2 font-semibold">{text.workflowAction}</p>
                       </div>
                       <div className="rounded-xl bg-[#0b1121]/50 border border-white/5 p-4">
                         <p className="text-white/30 font-mono uppercase tracking-widest">{text.target}</p>
@@ -621,30 +642,6 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl bg-white/[0.02] border border-white/8 p-4">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 rounded-xl bg-secondary/10 text-secondary border border-secondary/20">
-                          <ShieldCheck size={16} />
-                        </div>
-                        <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/35">Analysis process</p>
-                      </div>
-                      <div className="space-y-3">
-                        {group.logs.map((log, index) => {
-                          const previousValue = getMetadataText(log, 'previousValue') || '-';
-                          const nextValue = getMetadataText(log, 'nextValue') || '-';
-
-                          return (
-                            <div key={log.id} className="rounded-xl bg-[#08101f]/70 border border-white/5 p-3 text-sm">
-                              <p className="text-white/35 font-mono uppercase tracking-widest">
-                                Step {index + 1} • {new Date(log.createdAt).toLocaleString('pt-BR')}
-                              </p>
-                              <p className="text-white mt-2">{getAuditSentence(log)}</p>
-                              <p className="text-white/40 mt-2 text-xs">From {previousValue} to {nextValue}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </article>
                 );
               }
@@ -664,7 +661,7 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
                           <ScrollText size={18} />
                         </div>
                         <div>
-                          <p className="text-white text-base sm:text-lg font-semibold leading-relaxed">{getAuditSentence(log)}</p>
+                          <p className="text-white text-base sm:text-lg font-semibold leading-relaxed">{getAuditSentence(log, language)}</p>
                           <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/30 mt-2">
                             {log.resourceType} {log.resourceKey ? `• ${log.resourceKey}` : ''}
                           </p>

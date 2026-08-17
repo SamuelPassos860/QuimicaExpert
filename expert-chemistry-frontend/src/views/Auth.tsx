@@ -81,14 +81,14 @@ const AUTH_TEXT: Record<Language, {
     languageLabels: { en: 'English', pt: 'Portuguese', es: 'Spanish' },
     badge: 'Secure Lab Access',
     heroTitle: 'Secure access for analytical operations and laboratory oversight.',
-    heroDescription: 'Expert Chemistry centralizes spectrophotometry workflows, controlled user access, and operational reporting in a protected environment built for professional laboratory use.',
+    heroDescription: 'VS Analytics centralizes spectrophotometry workflows, controlled user access, and operational reporting in a protected environment built for professional laboratory use.',
     featureCards: [
       'Protected session access with server-managed authentication',
       'Credential policies aligned with minimum password validation',
       'Administrator-controlled user provisioning after initial setup'
     ],
     titles: {
-      login: 'Access the Expert Chemistry platform',
+      login: 'Access the VS Analytics platform',
       signup: 'Create the initial administrator account',
       'forgot-password': 'Recover access to your account',
       'reset-password': 'Create a new password'
@@ -148,14 +148,14 @@ const AUTH_TEXT: Record<Language, {
     languageLabels: { en: 'Inglês', pt: 'Português', es: 'Espanhol' },
     badge: 'Acesso Seguro ao Laboratório',
     heroTitle: 'Acesso seguro para operações analíticas e supervisão laboratorial.',
-    heroDescription: 'O Expert Chemistry centraliza fluxos de espectrofotometria, acesso controlado de usuários e relatórios operacionais em um ambiente protegido para uso profissional em laboratório.',
+    heroDescription: 'O VS Analytics centraliza fluxos de espectrofotometria, acesso controlado de usuários e relatórios operacionais em um ambiente protegido para uso profissional em laboratório.',
     featureCards: [
       'Acesso de sessão protegido com autenticação gerenciada pelo servidor',
       'Políticas de credenciais alinhadas à validação mínima de senha',
       'Provisionamento de usuários controlado por administrador após a configuração inicial'
     ],
     titles: {
-      login: 'Acesse a plataforma Expert Chemistry',
+      login: 'Acesse a plataforma VS Analytics',
       signup: 'Crie a conta inicial de administrador',
       'forgot-password': 'Recupere o acesso à sua conta',
       'reset-password': 'Crie uma nova senha'
@@ -215,14 +215,14 @@ const AUTH_TEXT: Record<Language, {
     languageLabels: { en: 'Inglés', pt: 'Portugués', es: 'Español' },
     badge: 'Acceso Seguro al Laboratorio',
     heroTitle: 'Acceso seguro para operaciones analíticas y supervisión de laboratorio.',
-    heroDescription: 'Expert Chemistry centraliza flujos de espectrofotometría, acceso controlado de usuarios e informes operativos en un entorno protegido para uso profesional de laboratorio.',
+    heroDescription: 'VS Analytics centraliza flujos de espectrofotometría, acceso controlado de usuarios e informes operativos en un entorno protegido para uso profesional de laboratorio.',
     featureCards: [
       'Acceso de sesión protegido con autenticación gestionada por el servidor',
       'Políticas de credenciales alineadas con validación mínima de contraseña',
       'Provisión de usuarios controlada por administrador tras la configuración inicial'
     ],
     titles: {
-      login: 'Accede a la plataforma Expert Chemistry',
+      login: 'Accede a la plataforma VS Analytics',
       signup: 'Crea la cuenta inicial de administrador',
       'forgot-password': 'Recupera el acceso a tu cuenta',
       'reset-password': 'Crea una nueva contraseña'

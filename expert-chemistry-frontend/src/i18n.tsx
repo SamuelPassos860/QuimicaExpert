@@ -35,7 +35,8 @@ type TranslationKey =
 
 type TranslationDictionary = Record<TranslationKey, string>;
 
-const STORAGE_KEY = 'quimicaexpert:language';
+const STORAGE_KEY = 'vsanalytics:language';
+const LEGACY_STORAGE_KEY = ['quimica', 'expert:language'].join('');
 
 export const LANGUAGE_OPTIONS: Array<{ id: Language; labelKey: TranslationKey; shortLabel: string }> = [
   { id: 'en', labelKey: 'layout.language.english', shortLabel: 'EN' },
@@ -150,7 +151,7 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 function getStoredLanguage(): Language {
   if (typeof window === 'undefined') return 'en';
 
-  const storedValue = window.localStorage.getItem(STORAGE_KEY);
+  const storedValue = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
   return storedValue === 'pt' || storedValue === 'es' ? storedValue : 'en';
 }
 

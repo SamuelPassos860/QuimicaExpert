@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowRight,
   BarChart3,
+  CalendarRange,
   FlaskConical,
   FolderOpen,
   Gauge,
@@ -13,7 +14,6 @@ import {
   TrendingUp,
   UserRoundPlus,
   Users,
-  Waves
 } from 'lucide-react';
 import type { View } from '../constants';
 import { useLanguage } from '../i18n';
@@ -93,6 +93,27 @@ type DashboardProjectGroup = {
   latestAt: string;
 };
 
+function AnimatedSpectralWaves({ size = 22, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M1 6c2.2-2.3 4.3 2.3 6.5 0s4.3-2.3 6.5 0 4.3 2.3 6.5 0 2.5 0 2.5 0" />
+      <path d="M1 12c2.2-2.3 4.3 2.3 6.5 0s4.3-2.3 6.5 0 4.3 2.3 6.5 0 2.5 0 2.5 0" />
+      <path d="M1 18c2.2-2.3 4.3 2.3 6.5 0s4.3-2.3 6.5 0 4.3 2.3 6.5 0 2.5 0 2.5 0" />
+    </svg>
+  );
+}
+
 const DASHBOARD_TEXT = {
   en: {
     systemOverview: 'System Overview',
@@ -125,6 +146,14 @@ const DASHBOARD_TEXT = {
     maxAbsorbance: 'Max A',
     clearFilters: 'Clear lines',
     filteredResults: 'Reference lines',
+    dateRange: 'Analysis period',
+    startDate: 'From',
+    endDate: 'To',
+    analysts: 'Analysts',
+    searchAnalysts: 'Search analyst',
+    hideAnalyst: 'Hide analyst',
+    showAnalyst: 'Show analyst',
+    clearAllFilters: 'Clear filters',
     recentCompleted: 'Recent completed results by project',
     clickOpenReports: 'Click Open Reports to inspect each record',
     completedSequence: 'Completed report sequence',
@@ -190,6 +219,14 @@ const DASHBOARD_TEXT = {
     maxAbsorbance: 'Max A',
     clearFilters: 'Limpar linhas',
     filteredResults: 'Linhas de referência',
+    dateRange: 'Período das análises',
+    startDate: 'De',
+    endDate: 'Até',
+    analysts: 'Analistas',
+    searchAnalysts: 'Buscar analista',
+    hideAnalyst: 'Ocultar analista',
+    showAnalyst: 'Exibir analista',
+    clearAllFilters: 'Limpar filtros',
     recentCompleted: 'Resultados recentes concluídos por projeto',
     clickOpenReports: 'Clique em Abrir Relatórios para inspecionar cada registro',
     completedSequence: 'Sequência de relatórios concluídos',
@@ -255,6 +292,14 @@ const DASHBOARD_TEXT = {
     maxAbsorbance: 'Max A',
     clearFilters: 'Limpiar líneas',
     filteredResults: 'Líneas de referencia',
+    dateRange: 'Período de análisis',
+    startDate: 'Desde',
+    endDate: 'Hasta',
+    analysts: 'Analistas',
+    searchAnalysts: 'Buscar analista',
+    hideAnalyst: 'Ocultar analista',
+    showAnalyst: 'Mostrar analista',
+    clearAllFilters: 'Limpiar filtros',
     recentCompleted: 'Resultados recientes completados por proyecto',
     clickOpenReports: 'Haz clic en Abrir Informes para inspeccionar cada registro',
     completedSequence: 'Secuencia de informes completados',
@@ -329,6 +374,18 @@ function parseRangeValue(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getLocalDateKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const ANALYST_COLORS = ['#76f3ea', '#a78bfa', '#fb7185', '#facc15', '#60a5fa', '#4ade80', '#fb923c', '#e879f9'];
+
 function getReportIdentity(report: DashboardSummary['recentReports'][number]) {
   if (report.projectName || report.projectId) {
     const [, ...rawAnalysisParts] = report.compoundName.split(' - ');
@@ -377,6 +434,10 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [trendMinAbsorbance, setTrendMinAbsorbance] = useState('');
   const [trendMaxAbsorbance, setTrendMaxAbsorbance] = useState('');
+  const [trendStartDate, setTrendStartDate] = useState('');
+  const [trendEndDate, setTrendEndDate] = useState('');
+  const [analystSearchQuery, setAnalystSearchQuery] = useState('');
+  const [hiddenAnalystIds, setHiddenAnalystIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingProjectKey, setIsDeletingProjectKey] = useState<string | null>(null);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
@@ -483,10 +544,10 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
   }
 
   const stats = summary ? [
-    { label: text.savedCompounds, value: formatNumber(summary.stats.savedCompounds), icon: FlaskConical, color: 'text-primary', detail: text.savedCompoundsDetail, onClick: () => onOpenView('spectrophotometry', { spectrophotometryTab: 'saved' }) },
-    { label: text.generatedReports, value: formatNumber(summary.stats.generatedReports ?? 0), icon: BarChart3, color: 'text-secondary', detail: text.generatedReportsDetail, onClick: () => onOpenView('reports') },
-    { label: text.registeredUsers, value: formatNumber(summary.stats.registeredUsers), icon: Users, color: 'text-blue-400', detail: text.registeredUsersDetail, onClick: () => onOpenView('user-management') },
-    { label: text.spectralRecords, value: formatNumber(summary.stats.spectralRecords), icon: Waves, color: 'text-green-400', detail: text.spectralRecordsDetail, onClick: () => onOpenView('spectrophotometry') }
+    { label: text.savedCompounds, value: formatNumber(summary.stats.savedCompounds), icon: FlaskConical, color: 'text-primary', iconMotion: 'group-hover:-rotate-12 group-hover:translate-x-0.5', effect: 'smoke', detail: text.savedCompoundsDetail, onClick: () => onOpenView('spectrophotometry', { spectrophotometryTab: 'saved' }) },
+    { label: text.generatedReports, value: formatNumber(summary.stats.generatedReports ?? 0), icon: BarChart3, color: 'text-secondary', iconMotion: 'dashboard-stat-icon--reports', detail: text.generatedReportsDetail, onClick: () => onOpenView('reports') },
+    { label: text.registeredUsers, value: formatNumber(summary.stats.registeredUsers), icon: Users, color: 'text-blue-400', iconMotion: 'dashboard-stat-icon--users', detail: text.registeredUsersDetail, onClick: () => onOpenView('user-management') },
+    { label: text.spectralRecords, value: formatNumber(summary.stats.spectralRecords), icon: AnimatedSpectralWaves, color: 'text-green-400', iconMotion: 'dashboard-stat-icon--waves', detail: text.spectralRecordsDetail, onClick: () => onOpenView('spectrophotometry') }
   ] : [];
   const recentReports = summary?.recentReports ?? [];
   const userResultBreakdown = summary?.userResultBreakdown ?? [];
@@ -524,11 +585,22 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
     : recentReports.filter((report) => getReportProjectKey(report) === selectedProjectKey);
   const minAbsorbanceLimit = parseRangeValue(trendMinAbsorbance);
   const maxAbsorbanceLimit = parseRangeValue(trendMaxAbsorbance);
-  const hasTrendFilters = [
-    trendMinAbsorbance,
-    trendMaxAbsorbance
-  ].some((value) => value.trim().length > 0);
-  const filteredRecentReports = selectedProjectReports;
+  const hasDateFilters = [trendStartDate, trendEndDate].some((value) => value.trim().length > 0);
+  const normalizedAnalystSearch = analystSearchQuery.trim().replace(/^@/, '').toLowerCase();
+  const dateFilteredRecentReports = selectedProjectReports.filter((report) => {
+    const reportDate = getLocalDateKey(report.createdAt);
+    if (trendStartDate && reportDate < trendStartDate) return false;
+    if (trendEndDate && reportDate > trendEndDate) return false;
+    return true;
+  });
+  const filteredRecentReports = dateFilteredRecentReports.filter((report) => {
+    if (hiddenAnalystIds.includes(report.generatedByUserId)) return false;
+    if (normalizedAnalystSearch) {
+      const analystIdentity = `${report.generatedByName} ${report.generatedByUserId}`.toLowerCase();
+      if (!analystIdentity.includes(normalizedAnalystSearch)) return false;
+    }
+    return true;
+  });
   const normalizedProjectSearch = projectSearchQuery.trim().toLowerCase();
   const visibleProjectGroups = normalizedProjectSearch
     ? projectGroups.filter((project) => project.name.toLowerCase().includes(normalizedProjectSearch))
@@ -539,6 +611,25 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
   const latestReport = filteredRecentReports[0] ?? null;
   const latestReportIdentity = latestReport ? getReportIdentity(latestReport) : null;
   const recentReportsChronological = [...filteredRecentReports].reverse();
+  const allAnalysts = Array.from(new Map(dateFilteredRecentReports.map((report) => [
+    report.generatedByUserId,
+    { userId: report.generatedByUserId, name: report.generatedByName }
+  ])).values()).map((analyst, index) => ({
+    ...analyst,
+    color: ANALYST_COLORS[index % ANALYST_COLORS.length]
+  }));
+  const analystLegend = normalizedAnalystSearch
+    ? allAnalysts.filter((analyst) => `${analyst.name} ${analyst.userId}`.toLowerCase().includes(normalizedAnalystSearch))
+    : allAnalysts;
+  const analystColorByUserId = new Map(allAnalysts.map((analyst) => [analyst.userId, analyst.color]));
+
+  const toggleAnalystVisibility = (userId: string) => {
+    setHiddenAnalystIds((current) => (
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId]
+    ));
+  };
   const recentAbsorbanceValues = recentReportsChronological.map((report) => report.absorbance);
   const referenceAbsorbanceValues = [
     ...recentAbsorbanceValues,
@@ -599,8 +690,15 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                 className={`glass-panel glass-panel-hover p-6 group rounded-2xl text-left ${stat.onClick ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 <div className="flex items-center justify-between mb-6">
-                  <div className={`p-3 rounded-xl bg-white/[0.03] border border-white/5 transition-all group-hover:scale-110 group-hover:border-white/10 ${stat.color}`}>
-                    <stat.icon size={22} />
+                  <div className={`relative p-3 rounded-xl bg-white/[0.03] border border-white/5 transition-all duration-300 group-hover:scale-110 group-hover:border-white/10 group-hover:bg-white/[0.06] ${stat.color}`}>
+                    {stat.effect === 'smoke' && (
+                      <svg className="dashboard-flask-smoke" viewBox="0 0 28 24" aria-hidden="true">
+                        <path d="M8 22 C3 17, 13 14, 8 8 C5 5, 7 2, 9 1" />
+                        <path d="M14 22 C19 17, 9 14, 14 9 C18 5, 15 3, 14 1" />
+                        <path d="M20 22 C15 18, 24 14, 20 10 C17 7, 20 4, 22 2" />
+                      </svg>
+                    )}
+                    <stat.icon size={22} className={`transition-transform duration-300 ease-out ${stat.iconMotion}`} />
                   </div>
                   <div className="text-right">
                     <span className="text-[8px] font-mono text-white/20 uppercase tracking-[0.2em] mb-1 block">{text.liveMetric}</span>
@@ -738,7 +836,7 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                         {text.filteredResults}
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 w-full xl:max-w-sm">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full xl:max-w-2xl">
                       <label className="space-y-1.5">
                         <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-white/35">{text.minAbsorbance}</span>
                         <input
@@ -759,22 +857,46 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                           className="w-full rounded-xl border border-white/10 bg-[#08101f]/65 px-3 py-2.5 text-sm text-white outline-none transition-all focus:border-primary/35"
                         />
                       </label>
+                      <label className="space-y-1.5">
+                        <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-white/35">
+                          <CalendarRange size={12} /> {text.startDate}
+                        </span>
+                        <input
+                          type="date"
+                          value={trendStartDate}
+                          max={trendEndDate || undefined}
+                          onChange={(event) => setTrendStartDate(event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-[#08101f]/65 px-3 py-2.5 text-sm text-white outline-none transition-all focus:border-primary/35 [color-scheme:dark]"
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-white/35">
+                          <CalendarRange size={12} /> {text.endDate}
+                        </span>
+                        <input
+                          type="date"
+                          value={trendEndDate}
+                          min={trendStartDate || undefined}
+                          onChange={(event) => setTrendEndDate(event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-[#08101f]/65 px-3 py-2.5 text-sm text-white outline-none transition-all focus:border-primary/35 [color-scheme:dark]"
+                        />
+                      </label>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
-                        setTrendMinAbsorbance('');
-                        setTrendMaxAbsorbance('');
+                        setTrendStartDate('');
+                        setTrendEndDate('');
                       }}
-                      disabled={!hasTrendFilters}
+                      disabled={!hasDateFilters}
                       className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-white/55 transition-all hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {text.clearFilters}
+                      {text.clearAllFilters}
                     </button>
                   </div>
                 </div>
 
-                {recentReportsChronological.length ? (
+                {dateFilteredRecentReports.length ? (
                   <div className="rounded-2xl bg-[#08101f]/55 border border-white/5 p-3 sm:p-4 overflow-hidden">
                     {(() => {
                       const width = 720;
@@ -798,6 +920,11 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                         y: scaleY(report.absorbance),
                         identity: getReportIdentity(report)
                       }));
+                      const firstPointByDate = new Map<string, typeof points[number]>();
+                      points.forEach((point) => {
+                        const dateKey = getLocalDateKey(point.report.createdAt);
+                        if (dateKey && !firstPointByDate.has(dateKey)) firstPointByDate.set(dateKey, point);
+                      });
                       const polyline = points.map((point) => `${point.x},${point.y}`).join(' ');
 
                       return (
@@ -847,13 +974,26 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                               </g>
                             );
                           })}
+                          {Array.from(firstPointByDate.entries()).map(([dateKey, point]) => (
+                            <line
+                              key={`date-${dateKey}`}
+                              x1={point.x}
+                              y1={padding.top}
+                              x2={point.x}
+                              y2={padding.top + plotHeight}
+                              stroke="rgba(255,255,255,0.13)"
+                              strokeWidth="1"
+                              strokeDasharray="3 6"
+                            />
+                          ))}
                           {points.length > 1 && (
                             <polyline points={polyline} fill="none" stroke="#76f3ea" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                           )}
                           {points.map((point, index) => (
                             <g key={point.report.reportId}>
-                              <circle cx={point.x} cy={point.y} r="8" fill="rgba(118,243,234,0.16)" />
-                              <circle cx={point.x} cy={point.y} r="5.5" fill="#76f3ea" stroke="#e9fffd" strokeWidth="1.6" filter="drop-shadow(0 0 8px rgba(118,243,234,0.85))" />
+                              <circle cx={point.x} cy={point.y} r="8" fill={analystColorByUserId.get(point.report.generatedByUserId) ?? ANALYST_COLORS[0]} opacity="0.18" />
+                              <circle cx={point.x} cy={point.y} r="5.5" fill={analystColorByUserId.get(point.report.generatedByUserId) ?? ANALYST_COLORS[0]} stroke="#e9fffd" strokeWidth="1.6" />
+                              <title>{`${point.identity.analysis} · ${point.report.generatedByName} (@${point.report.generatedByUserId}) · ${formatDateTime(point.report.createdAt)} · A ${formatDecimal(point.report.absorbance)}`}</title>
                               <text x={point.x} y={point.y - 12} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.68)">
                                 {index + 1}
                               </text>
@@ -871,6 +1011,51 @@ export default function Dashboard({ currentUser, onOpenView, globalSearch }: Das
                         </svg>
                       );
                     })()}
+                    {(analystLegend.length > 0 || analystSearchQuery) && (
+                      <div className="mt-3 border-t border-white/5 pt-3">
+                        <div className="mb-2.5 flex items-center justify-between gap-3">
+                          <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-white/30">{text.analysts}</span>
+                          <label className="relative block w-36 sm:w-44">
+                            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/25" />
+                            <input
+                              type="search"
+                              value={analystSearchQuery}
+                              onChange={(event) => setAnalystSearchQuery(event.target.value)}
+                              placeholder={text.searchAnalysts}
+                              aria-label={text.searchAnalysts}
+                              className="w-full rounded-lg border border-white/8 bg-white/[0.025] py-1.5 pl-7 pr-2 text-[11px] text-white outline-none transition-all placeholder:text-white/20 focus:border-primary/25 focus:bg-white/[0.04]"
+                            />
+                          </label>
+                        </div>
+                        <div className="custom-scrollbar max-h-24 overflow-y-auto pr-1">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            {analystLegend.map((analyst) => {
+                              const isHidden = hiddenAnalystIds.includes(analyst.userId);
+                              const actionLabel = isHidden ? text.showAnalyst : text.hideAnalyst;
+
+                              return (
+                                <button
+                                  key={analyst.userId}
+                                  type="button"
+                                  onClick={() => toggleAnalystVisibility(analyst.userId)}
+                                  className={`flex items-center gap-2 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-white/[0.05] ${isHidden ? 'text-white/25' : 'text-white/55'}`}
+                                  title={`${actionLabel}: ${analyst.name} (@${analyst.userId})`}
+                                  aria-label={`${actionLabel}: ${analyst.name}`}
+                                  aria-pressed={!isHidden}
+                                >
+                                  <span
+                                    className={`h-2.5 w-2.5 shrink-0 rounded-full transition-all ${isHidden ? 'opacity-30 grayscale' : ''}`}
+                                    style={{ backgroundColor: analyst.color, boxShadow: isHidden ? 'none' : `0 0 8px ${analyst.color}80` }}
+                                  />
+                                  <span className={isHidden ? 'line-through decoration-white/20' : ''}>{analyst.name}</span>
+                                  <span className="font-mono text-[10px] text-white/30">@{analyst.userId}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="h-[260px] rounded-2xl bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center text-sm text-white/35">

@@ -104,15 +104,149 @@
   background-size: 32px 32px;
 }
 
+.custom-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.24) rgba(255, 255, 255, 0.035);
+}
+
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 11px;
+  height: 11px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 999px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+  background: rgba(255, 255, 255, 0.2);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(118, 243, 234, 0.42);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background: rgba(118, 243, 234, 0.68);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@keyframes dashboard-report-float {
+  0%, 100% { transform: scaleY(0.48); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes dashboard-users-front {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-0.8px, -0.7px); }
+}
+
+@keyframes dashboard-users-back {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0.8px, 0.7px); }
+}
+
+@keyframes dashboard-spectral-wave {
+  0%, 100% { transform: translateX(-2px); stroke-dashoffset: 0; }
+  50% { transform: translateX(2px); stroke-dashoffset: -10; }
+}
+
+@keyframes dashboard-flask-smoke {
+  0% { stroke-dashoffset: 34; opacity: 0; transform: translateY(4px); }
+  18% { opacity: 0.85; }
+  65% { opacity: 0.55; }
+  100% { stroke-dashoffset: 0; opacity: 0; transform: translateY(-5px); }
+}
+
+.dashboard-flask-smoke {
+  position: absolute;
+  left: 50%;
+  top: -19px;
+  width: 28px;
+  height: 24px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+.dashboard-flask-smoke path {
+  fill: none;
+  stroke: rgba(190, 255, 248, 0.82);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-dasharray: 34;
+  stroke-dashoffset: 34;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px rgba(118, 243, 234, 0.65));
+}
+
+.group:hover .dashboard-flask-smoke path {
+  animation: dashboard-flask-smoke 1.8s ease-out infinite;
+}
+
+.group:hover .dashboard-flask-smoke path:nth-child(2) {
+  animation-delay: 0.38s;
+}
+
+.group:hover .dashboard-flask-smoke path:nth-child(3) {
+  animation-delay: 0.76s;
+}
+
+.dashboard-stat-icon--reports path {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.group:hover .dashboard-stat-icon--reports path:not(:first-child) {
+  animation: dashboard-report-float 0.9s ease-in-out infinite;
+}
+
+.group:hover .dashboard-stat-icon--reports path:nth-child(3) {
+  animation-delay: -0.3s;
+}
+
+.group:hover .dashboard-stat-icon--reports path:nth-child(4) {
+  animation-delay: -0.6s;
+}
+
+.group:hover .dashboard-stat-icon--users path:nth-of-type(odd) {
+  animation: dashboard-users-front 1.65s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.group:hover .dashboard-stat-icon--users path:nth-of-type(even) {
+  animation: dashboard-users-back 1.65s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.dashboard-stat-icon--waves {
+  overflow: visible;
+}
+
+.dashboard-stat-icon--waves path {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  will-change: transform;
+  stroke-dasharray: 7 3;
+}
+
+.group:hover .dashboard-stat-icon--waves path {
+  animation: dashboard-spectral-wave 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group:hover .dashboard-stat-icon--reports path,
+  .group:hover .dashboard-stat-icon--users path,
+  .group:hover .dashboard-stat-icon--waves path,
+  .group:hover .dashboard-flask-smoke path {
+    animation: none;
+  }
 }
