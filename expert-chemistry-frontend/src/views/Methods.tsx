@@ -80,6 +80,40 @@ const initialProjectLibrary: AnalyticalProject[] = [
   }
 ];
 
+const BUILT_IN_PROJECT_DESCRIPTIONS: Record<string, Record<'en' | 'pt' | 'es', string>> = {
+  'PRJ-CAF': {
+    en: 'Project for quantifying caffeine by UV reading using a known standard, sample absorbance and dilution factor.',
+    pt: 'Projeto para quantificação de cafeína por leitura UV usando padrão conhecido, absorbância da amostra e fator de diluição.',
+    es: 'Proyecto para cuantificar cafeína mediante lectura UV usando un estándar conocido, absorbancia de la muestra y factor de dilución.'
+  },
+  'PRJ-FE': {
+    en: 'Project for colorimetric methods with blank correction, analytical curve and corrected absorbance reading.',
+    pt: 'Projeto para métodos colorimétricos com correção do branco, curva analítica e leitura de absorbância corrigida.',
+    es: 'Proyecto para métodos colorimétricos con corrección del blanco, curva analítica y lectura de absorbancia corregida.'
+  },
+  'PRJ-DYE': {
+    en: 'Project for a simple standard-to-sample comparison with transmittance converted into absorbance.',
+    pt: 'Projeto para comparação simples entre padrão e amostra, com conversão da transmitância em absorbância.',
+    es: 'Proyecto para una comparación simple entre estándar y muestra, con conversión de transmitancia en absorbancia.'
+  }
+};
+
+const DEFAULT_PROJECT_DESCRIPTION: Record<'en' | 'pt' | 'es', string> = {
+  en: 'Project created to configure custom analytical methods.',
+  pt: 'Projeto criado para configurar métodos analíticos personalizados.',
+  es: 'Proyecto creado para configurar métodos analíticos personalizados.'
+};
+
+function getLocalizedProjectDescription(project: AnalyticalProject, language: 'en' | 'pt' | 'es') {
+  const builtInDescription = BUILT_IN_PROJECT_DESCRIPTIONS[project.id]?.[language];
+  if (builtInDescription) return builtInDescription;
+
+  const usesDefaultDescription = !project.description.trim()
+    || Object.values(DEFAULT_PROJECT_DESCRIPTION).includes(project.description.trim());
+
+  return usesDefaultDescription ? DEFAULT_PROJECT_DESCRIPTION[language] : project.description;
+}
+
 const projectMethodTypes: ProjectMethodType[] = [
   'direct-proportion',
   'blank-correction',
@@ -275,9 +309,9 @@ interface FixedScanPoint {
 }
 
 const SCAN_TEXT = {
-  en: { fixedMethod: 'Fixed Method', title: 'Scan Readings', print: 'Print scan report', disconnect: 'Disconnect equipment', connect: 'Connect serial equipment', description: 'Import multiple factor/reading pairs or add them manually. The curve is ordered by factor and the highest response is identified automatically.', factor: 'Factor / wavelength', reading: 'Reading', add: 'Add Reading', empty: 'No readings added yet.', fileHint: 'TXT/CSV: one pair per line. Accepted separators: space, tab, semicolon, pipe, or comma-separated values with decimal point.', visual: 'Visual Result', curve: 'Scan Curve', graphEmpty: 'Add or import at least two readings to form the graph.', importError: 'No valid scan was found. Use two numeric columns with at least two readings.', methodLabel: 'Scan / spectral sweep', methodExpression: 'Multiple factor/reading pairs plotted as an interactive scan curve', open: 'Open Scan', projectHint: 'Open Scan to import or capture multiple factor/reading pairs, interact with the spectral curve and generate a report linked to this project.', reportMinimum: 'Add at least two valid readings before printing a scan report.' },
-  pt: { fixedMethod: 'Método Fixo', title: 'Leituras de Varredura', print: 'Imprimir relatório da varredura', disconnect: 'Desconectar equipamento', connect: 'Conectar equipamento serial', description: 'Importe vários pares de fator/leitura ou adicione-os manualmente. A curva é ordenada pelo fator e a maior resposta é identificada automaticamente.', factor: 'Fator / comprimento de onda', reading: 'Leitura', add: 'Adicionar Leitura', empty: 'Nenhuma leitura adicionada.', fileHint: 'TXT/CSV: um par por linha. Separadores aceitos: espaço, tabulação, ponto e vírgula, barra vertical ou vírgula com decimal em ponto.', visual: 'Resultado Visual', curve: 'Curva de Varredura', graphEmpty: 'Adicione ou importe pelo menos duas leituras para formar o gráfico.', importError: 'Nenhuma varredura válida foi encontrada. Use duas colunas numéricas com pelo menos duas leituras.', methodLabel: 'Varredura espectral', methodExpression: 'Vários pares de fator e leitura representados em uma curva de varredura interativa', open: 'Abrir Varredura', projectHint: 'Abra a Varredura para importar ou capturar vários pares de fator/leitura, interagir com a curva espectral e gerar um relatório vinculado a este projeto.', reportMinimum: 'Adicione pelo menos duas leituras válidas antes de imprimir o relatório da varredura.' },
-  es: { fixedMethod: 'Método Fijo', title: 'Lecturas de Barrido', print: 'Imprimir informe de barrido', disconnect: 'Desconectar equipo', connect: 'Conectar equipo serial', description: 'Importa varios pares de factor/lectura o agrégalos manualmente. La curva se ordena por factor y la respuesta más alta se identifica automáticamente.', factor: 'Factor / longitud de onda', reading: 'Lectura', add: 'Agregar Lectura', empty: 'Todavía no hay lecturas.', fileHint: 'TXT/CSV: un par por línea. Separadores aceptados: espacio, tabulación, punto y coma, barra vertical o coma con decimal en punto.', visual: 'Resultado Visual', curve: 'Curva de Barrido', graphEmpty: 'Agrega o importa al menos dos lecturas para formar el gráfico.', importError: 'No se encontró un barrido válido. Usa dos columnas numéricas con al menos dos lecturas.', methodLabel: 'Barrido espectral', methodExpression: 'Varios pares de factor y lectura representados en una curva de barrido interactiva', open: 'Abrir Barrido', projectHint: 'Abre el Barrido para importar o capturar varios pares de factor/lectura, interactuar con la curva espectral y generar un informe vinculado a este proyecto.', reportMinimum: 'Agrega al menos dos lecturas válidas antes de imprimir el informe de barrido.' }
+  en: { fixedMethod: 'Fixed Method', title: 'Scan Readings', print: 'Print scan report', import: 'Import TXT or CSV', clear: 'Clear readings', disconnect: 'Disconnect equipment', connect: 'Connect serial equipment', description: 'Import multiple factor/reading pairs or add them manually. The curve is ordered by factor and the highest response is identified automatically.', factor: 'Factor / wavelength', reading: 'Reading', add: 'Add Reading', empty: 'No readings added yet.', fileHint: 'TXT/CSV: one pair per line. Accepted separators: space, tab, semicolon, pipe, or comma-separated values with decimal point.', visual: 'Visual Result', curve: 'Scan Curve', graphEmpty: 'Add or import at least two readings to form the graph.', importError: 'No valid scan was found. Use two numeric columns with at least two readings.', methodLabel: 'Scan / spectral sweep', methodExpression: 'Multiple factor/reading pairs plotted as an interactive scan curve', open: 'Open Scan', projectHint: 'Open Scan to import or capture multiple factor/reading pairs, interact with the spectral curve and generate a report linked to this project.', reportMinimum: 'Add at least two valid readings before printing a scan report.' },
+  pt: { fixedMethod: 'Método Fixo', title: 'Leituras de Varredura', print: 'Imprimir relatório da varredura', import: 'Importar TXT ou CSV', clear: 'Limpar leituras', disconnect: 'Desconectar equipamento', connect: 'Conectar equipamento serial', description: 'Importe vários pares de fator/leitura ou adicione-os manualmente. A curva é ordenada pelo fator e a maior resposta é identificada automaticamente.', factor: 'Fator / comprimento de onda', reading: 'Leitura', add: 'Adicionar Leitura', empty: 'Nenhuma leitura adicionada.', fileHint: 'TXT/CSV: um par por linha. Separadores aceitos: espaço, tabulação, ponto e vírgula, barra vertical ou vírgula com decimal em ponto.', visual: 'Resultado Visual', curve: 'Curva de Varredura', graphEmpty: 'Adicione ou importe pelo menos duas leituras para formar o gráfico.', importError: 'Nenhuma varredura válida foi encontrada. Use duas colunas numéricas com pelo menos duas leituras.', methodLabel: 'Varredura espectral', methodExpression: 'Vários pares de fator e leitura representados em uma curva de varredura interativa', open: 'Abrir Varredura', projectHint: 'Abra a Varredura para importar ou capturar vários pares de fator/leitura, interagir com a curva espectral e gerar um relatório vinculado a este projeto.', reportMinimum: 'Adicione pelo menos duas leituras válidas antes de imprimir o relatório da varredura.' },
+  es: { fixedMethod: 'Método Fijo', title: 'Lecturas de Barrido', print: 'Imprimir informe de barrido', import: 'Importar TXT o CSV', clear: 'Limpiar lecturas', disconnect: 'Desconectar equipo', connect: 'Conectar equipo serial', description: 'Importa varios pares de factor/lectura o agrégalos manualmente. La curva se ordena por factor y la respuesta más alta se identifica automáticamente.', factor: 'Factor / longitud de onda', reading: 'Lectura', add: 'Agregar Lectura', empty: 'Todavía no hay lecturas.', fileHint: 'TXT/CSV: un par por línea. Separadores aceptados: espacio, tabulación, punto y coma, barra vertical o coma con decimal en punto.', visual: 'Resultado Visual', curve: 'Curva de Barrido', graphEmpty: 'Agrega o importa al menos dos lecturas para formar el gráfico.', importError: 'No se encontró un barrido válido. Usa dos columnas numéricas con al menos dos lecturas.', methodLabel: 'Barrido espectral', methodExpression: 'Varios pares de factor y lectura representados en una curva de barrido interactiva', open: 'Abrir Barrido', projectHint: 'Abre el Barrido para importar o capturar varios pares de factor/lectura, interactuar con la curva espectral y generar un informe vinculado a este proyecto.', reportMinimum: 'Agrega al menos dos lecturas válidas antes de imprimir el informe de barrido.' }
 };
 
 function parseFixedScanData(text: string) {
@@ -394,8 +428,8 @@ function FixedScanMethod({
           </div>
           <div className="flex gap-2">
             <input ref={scanFileInputRef} type="file" accept=".txt,.csv,.log,.dat" onChange={importFile} className="hidden" />
-            <button type="button" onClick={() => scanFileInputRef.current?.click()} title="Import TXT or CSV" className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"><FileUp size={18} /></button>
-            <button type="button" onClick={() => { setPoints([]); setHoveredIndex(null); setSelectedIndex(null); setImportError(null); }} title="Clear readings" className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"><RotateCcw size={18} /></button>
+            <button type="button" onClick={() => scanFileInputRef.current?.click()} title={scanText.import} aria-label={scanText.import} className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"><FileUp size={18} /></button>
+            <button type="button" onClick={() => { setPoints([]); setHoveredIndex(null); setSelectedIndex(null); setImportError(null); }} title={scanText.clear} aria-label={scanText.clear} className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"><RotateCcw size={18} /></button>
             <button type="button" disabled={points.length < 2 || isPrinting} onClick={async () => { setIsPrinting(true); try { await onPrintReport(points); } finally { setIsPrinting(false); } }} title={scanText.print} className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-on-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed"><Download size={18} /></button>
             <button type="button" onClick={() => void (isSerialConnected ? onDisconnectSerial() : onConnectSerial())} title={isSerialConnected ? scanText.disconnect : scanText.connect} className={`p-2.5 rounded-xl border transition-all ${isSerialConnected ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white hover:bg-white/[0.08]'}`}>{isSerialConnected ? <Unlink size={18} /> : <Link size={18} />}</button>
           </div>
@@ -1181,6 +1215,9 @@ const METHODS_TEXT = {
     intercept: 'Intercept (b)',
     correlation: 'Correlation (R2)',
     waitingPoints: 'Waiting for data points',
+    minimumCalibrationPoints: 'Min. 5 active points required',
+    invalidCalibrationData: 'Invalid data',
+    calibrationReportMinimum: 'Add at least 5 active valid points before printing a calibration report.',
     sampleQuantification: 'Sample Quantification',
     sampleAbsorbance: 'Sample absorbance',
     standardAbsorbance: 'Standard absorbance',
@@ -1191,6 +1228,41 @@ const METHODS_TEXT = {
     printMethodReport: 'Print Method Report',
     createCustomMethod: 'Create Custom Method',
     noProjects: 'No projects found for this search.'
+    ,lambertBeerTab: 'Lambert-Beer Calculator'
+    ,linearRegressionTab: 'Linear Regression'
+    ,scanTab: 'Scan'
+    ,methodBuilderDescription: 'Create a calculation method with variables, time sequences, blank readings and constants.'
+    ,formulaHint: 'Use variables without spaces. Saved constants can be inserted in the formula without becoming unknown inputs.'
+    ,formulaBuilderHint: 'Create variables for equipment readings, time sequences and constants, then click them to assemble the formula.'
+    ,addMethod: 'Add Method'
+    ,cancel: 'Cancel'
+    ,inputsCount: 'inputs'
+    ,methodsCount: 'methods'
+    ,projectCreationHint: 'Register the compound first. Calculation methods can then be configured with equipment readings.'
+    ,projectPurposePlaceholder: 'Describe what this project should calculate...'
+    ,defaultMethodHint: 'New projects start with a rule-of-three template: C sample = A sample x C standard / A standard.'
+    ,formulaResult: 'Formula Result'
+    ,finalReport: 'Final Report'
+    ,directProportionType: 'Rule of three'
+    ,blankCorrectionType: 'Blank correction'
+    ,transmittanceType: 'Transmittance to absorbance'
+    ,calibrationCurveType: 'Calibration curve'
+    ,scanType: 'Scan / spectral sweep'
+    ,customFormulaType: 'Custom formula'
+    ,concentrationMode: 'Concentration'
+    ,absorbanceMode: 'Absorbance'
+    ,sampleReading: 'Sample A'
+    ,blankReading: 'Blank A'
+    ,online: 'Online'
+    ,hardware: 'Hardware'
+    ,readingsImported: 'readings imported'
+    ,target: 'Target'
+    ,importedScan: 'Imported spectral scan'
+    ,usePoint: 'Use Point'
+    ,sessionReport: 'Session Report'
+    ,technicalReport: 'Technical analysis report'
+    ,printPdfReport: 'Print PDF Report'
+    ,linearRangeHint: 'This calculation assumes a linear relationship between absorbance and concentration. Ensure your readings are within the dynamic linear range of your instrument.'
   },
   pt: {
     sop: 'Procedimentos Operacionais Padrão',
@@ -1268,6 +1340,9 @@ const METHODS_TEXT = {
     intercept: 'Intercepto (b)',
     correlation: 'Correlação (R2)',
     waitingPoints: 'Aguardando pontos de dados',
+    minimumCalibrationPoints: 'Mín. de 5 pontos ativos necessário',
+    invalidCalibrationData: 'Dados inválidos',
+    calibrationReportMinimum: 'Adicione pelo menos 5 pontos ativos válidos antes de imprimir o relatório de calibração.',
     sampleQuantification: 'Quantificação da Amostra',
     sampleAbsorbance: 'Absorbância da amostra',
     standardAbsorbance: 'Absorbância padrão',
@@ -1278,6 +1353,41 @@ const METHODS_TEXT = {
     printMethodReport: 'Imprimir Relatório do Método',
     createCustomMethod: 'Criar Método Personalizado',
     noProjects: 'Nenhum projeto encontrado para esta busca.'
+    ,lambertBeerTab: 'Calculadora Lambert-Beer'
+    ,linearRegressionTab: 'Regressão Linear'
+    ,scanTab: 'Varredura'
+    ,methodBuilderDescription: 'Crie um método de cálculo com variáveis, sequências temporais, leituras de branco e constantes.'
+    ,formulaHint: 'Use variáveis sem espaços. As constantes salvas podem ser inseridas na fórmula sem se tornarem entradas desconhecidas.'
+    ,formulaBuilderHint: 'Crie variáveis para leituras do equipamento, sequências temporais e constantes; depois clique nelas para montar a fórmula.'
+    ,addMethod: 'Adicionar Método'
+    ,cancel: 'Cancelar'
+    ,inputsCount: 'entradas'
+    ,methodsCount: 'métodos'
+    ,projectCreationHint: 'Cadastre primeiro o composto. Depois, configure os métodos de cálculo com as leituras do equipamento.'
+    ,projectPurposePlaceholder: 'Descreva o que este projeto deve calcular...'
+    ,defaultMethodHint: 'Novos projetos começam com um modelo de regra de três: C amostra = A amostra x C padrão / A padrão.'
+    ,formulaResult: 'Resultado da Fórmula'
+    ,finalReport: 'Relatório Final'
+    ,directProportionType: 'Regra de três'
+    ,blankCorrectionType: 'Correção do branco'
+    ,transmittanceType: 'Transmitância para absorbância'
+    ,calibrationCurveType: 'Curva de calibração'
+    ,scanType: 'Varredura espectral'
+    ,customFormulaType: 'Fórmula personalizada'
+    ,concentrationMode: 'Concentração'
+    ,absorbanceMode: 'Absorbância'
+    ,sampleReading: 'Amostra A'
+    ,blankReading: 'Branco A'
+    ,online: 'Online'
+    ,hardware: 'Equipamento'
+    ,readingsImported: 'leituras importadas'
+    ,target: 'Destino'
+    ,importedScan: 'Varredura espectral importada'
+    ,usePoint: 'Usar Ponto'
+    ,sessionReport: 'Relatório da Sessão'
+    ,technicalReport: 'Relatório técnico da análise'
+    ,printPdfReport: 'Imprimir Relatório PDF'
+    ,linearRangeHint: 'Este cálculo pressupõe uma relação linear entre absorbância e concentração. Verifique se as leituras estão dentro da faixa dinâmica linear do equipamento.'
   },
   es: {
     sop: 'Procedimientos Operativos Estándar',
@@ -1355,6 +1465,9 @@ const METHODS_TEXT = {
     intercept: 'Intercepto (b)',
     correlation: 'Correlación (R2)',
     waitingPoints: 'Esperando puntos de datos',
+    minimumCalibrationPoints: 'Se requieren mín. 5 puntos activos',
+    invalidCalibrationData: 'Datos no válidos',
+    calibrationReportMinimum: 'Agrega al menos 5 puntos activos válidos antes de imprimir el informe de calibración.',
     sampleQuantification: 'Cuantificación de Muestra',
     sampleAbsorbance: 'Absorbancia de la muestra',
     standardAbsorbance: 'Absorbancia estándar',
@@ -1365,6 +1478,41 @@ const METHODS_TEXT = {
     printMethodReport: 'Imprimir Informe del Método',
     createCustomMethod: 'Crear Método Personalizado',
     noProjects: 'No se encontraron proyectos para esta búsqueda.'
+    ,lambertBeerTab: 'Calculadora Lambert-Beer'
+    ,linearRegressionTab: 'Regresión Lineal'
+    ,scanTab: 'Barrido'
+    ,methodBuilderDescription: 'Crea un método de cálculo con variables, secuencias temporales, lecturas de blanco y constantes.'
+    ,formulaHint: 'Usa variables sin espacios. Las constantes guardadas pueden insertarse en la fórmula sin convertirse en entradas desconocidas.'
+    ,formulaBuilderHint: 'Crea variables para lecturas del equipo, secuencias temporales y constantes; luego haz clic para montar la fórmula.'
+    ,addMethod: 'Agregar Método'
+    ,cancel: 'Cancelar'
+    ,inputsCount: 'entradas'
+    ,methodsCount: 'métodos'
+    ,projectCreationHint: 'Registra primero el compuesto. Después, configura los métodos de cálculo con las lecturas del equipo.'
+    ,projectPurposePlaceholder: 'Describe lo que este proyecto debe calcular...'
+    ,defaultMethodHint: 'Los proyectos nuevos comienzan con una regla de tres: C muestra = A muestra x C estándar / A estándar.'
+    ,formulaResult: 'Resultado de la Fórmula'
+    ,finalReport: 'Informe Final'
+    ,directProportionType: 'Regla de tres'
+    ,blankCorrectionType: 'Corrección del blanco'
+    ,transmittanceType: 'Transmitancia a absorbancia'
+    ,calibrationCurveType: 'Curva de calibración'
+    ,scanType: 'Barrido espectral'
+    ,customFormulaType: 'Fórmula personalizada'
+    ,concentrationMode: 'Concentración'
+    ,absorbanceMode: 'Absorbancia'
+    ,sampleReading: 'Muestra A'
+    ,blankReading: 'Blanco A'
+    ,online: 'En línea'
+    ,hardware: 'Equipo'
+    ,readingsImported: 'lecturas importadas'
+    ,target: 'Destino'
+    ,importedScan: 'Barrido espectral importado'
+    ,usePoint: 'Usar Punto'
+    ,sessionReport: 'Informe de la Sesión'
+    ,technicalReport: 'Informe técnico del análisis'
+    ,printPdfReport: 'Imprimir Informe PDF'
+    ,linearRangeHint: 'Este cálculo presupone una relación lineal entre absorbancia y concentración. Verifica que las lecturas estén dentro del rango dinámico lineal del equipo.'
   }
 };
 
@@ -1463,9 +1611,19 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     ? projects.find((project) => project.id === methodReturnTarget.projectId) ?? null
     : null;
   const returnTargetMethod = returnTargetProject?.methods.find((method) => method.id === methodReturnTarget?.methodId) ?? null;
-  const localizedMethodTypeOptions = methodTypeOptions.map((option) => option.value === 'scan'
-    ? { ...option, label: SCAN_TEXT[language].methodLabel, expression: SCAN_TEXT[language].methodExpression }
-    : option);
+  const methodTypeLabels: Record<ProjectMethodType, string> = {
+    'direct-proportion': text.directProportionType,
+    'blank-correction': text.blankCorrectionType,
+    'transmittance-absorbance': text.transmittanceType,
+    'calibration-curve': text.calibrationCurveType,
+    scan: text.scanType,
+    'custom-formula': text.customFormulaType
+  };
+  const localizedMethodTypeOptions = methodTypeOptions.map((option) => ({
+    ...option,
+    label: methodTypeLabels[option.value],
+    expression: option.value === 'scan' ? SCAN_TEXT[language].methodExpression : option.expression
+  }));
   const selectedMethodType = localizedMethodTypeOptions.find((option) => option.value === newMethodType) ?? localizedMethodTypeOptions[0];
   const customFormulaResult = selectedMethod?.type === 'custom-formula'
     ? evaluateCustomFormula(selectedMethod.expression, customFormulaInputs, selectedMethod.constants)
@@ -1591,7 +1749,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
       compound,
       matrix: 'Not defined',
       wavelength: 'Not defined',
-      description: newProjectDescription.trim() || 'Project created to configure custom analytical methods.',
+      description: newProjectDescription.trim(),
       inputs: ['Absorbance', 'Transmittance', 'Known concentration'],
       methods: [
         {
@@ -1658,6 +1816,10 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
 
   const selectProjectMethod = (method: ProjectMethod) => {
     setSelectedMethodId(method.id);
+    setMethodInputs((current) => ({
+      ...current,
+      concentrationUnit: method.resultUnit?.trim() || (method.type === 'direct-proportion' ? 'mg/L' : 'AU')
+    }));
 
     const targetTab = getMethodTargetTab(method);
     const shouldOpenDedicatedMethod =
@@ -1777,7 +1939,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
           ? 'lambert-beer'
           : 'linear-regression',
       constants: newMethodType === 'custom-formula' ? formulaBuilderConstants : undefined,
-      resultUnit: newMethodType === 'custom-formula' ? newMethodResultUnit.trim() || undefined : undefined
+      resultUnit: newMethodResultUnit.trim() || undefined
     };
 
     setProjects((currentProjects) => currentProjects.map((project) => (
@@ -1786,6 +1948,10 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
         : project
     )));
     setSelectedMethodId(methodId);
+    setMethodInputs((current) => ({
+      ...current,
+      concentrationUnit: newMethod.resultUnit?.trim() || (newMethod.type === 'direct-proportion' ? 'mg/L' : 'AU')
+    }));
     setNewMethodName('');
     setNewMethodExpression('');
     setNewMethodResultUnit('');
@@ -2009,7 +2175,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
       return {
         label: 'Corrected absorbance',
         value: sampleAbsorbance - blankAbsorbance,
-        unit: 'AU'
+        unit: concentrationUnit
       };
     }
 
@@ -2018,7 +2184,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
       return {
         label: 'Calculated absorbance',
         value: -Math.log10(transmittance / 100),
-        unit: 'AU'
+        unit: concentrationUnit
       };
     }
 
@@ -2042,7 +2208,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
       const result = evaluateCustomFormula(selectedMethod.expression, customFormulaInputs, selectedMethod.constants);
       resultLabel = 'Formula Result';
       resultValue = result.value;
-      resultUnit = selectedMethod.resultUnit ?? '';
+      resultUnit = methodInputs.concentrationUnit.trim() || selectedMethod.resultUnit || '';
       inputs.push(...result.variables.map((variable) => ({
         label: variable,
         value: customFormulaInputs[variable] ?? ''
@@ -2321,7 +2487,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
     const results = sampleEvaluation.results;
 
     if (!results) {
-      window.alert('Add at least 5 active valid points before printing a calibration report.');
+      window.alert(text.calibrationReportMinimum);
       return;
     }
 
@@ -2707,7 +2873,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               : 'bg-white/[0.03] text-white/70 border-white/10 hover:bg-white/[0.08]'
           }`}
         >
-          Lambert-Beer Calc
+          {text.lambertBeerTab}
         </button>
         <button
           onClick={() => openCalculatorTab('linear-regression')}
@@ -2717,7 +2883,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               : 'bg-white/[0.03] text-white/70 border-white/10 hover:bg-white/[0.08]'
           }`}
         >
-          Linear Regression
+          {text.linearRegressionTab}
         </button>
         <button
           onClick={() => openCalculatorTab('scan')}
@@ -2727,7 +2893,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               : 'bg-white/[0.03] text-white/70 border-white/10 hover:bg-white/[0.08]'
           }`}
         >
-          Scan
+          {text.scanTab}
         </button>
       </div>
 
@@ -2748,7 +2914,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">{text.formulaBuilderTitle}</p>
                   <h2 className="text-2xl font-display font-bold text-white mt-2">{openedProject.compound}</h2>
                   <p className="text-sm text-white/45 mt-2 max-w-3xl leading-relaxed">
-                    Create a custom calculation method with variables, time sequences, blank readings and constants.
+                    {text.methodBuilderDescription}
                   </p>
                 </div>
               </div>
@@ -2792,28 +2958,28 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                 />
                 {newMethodType === 'custom-formula' && (
                   <p className="text-[10px] text-white/35 leading-relaxed">
-                    Use variables without spaces. Constants saved below can be inserted in the formula but will not become unknown inputs.
+                    {text.formulaHint}
                   </p>
                 )}
               </label>
 
+              <label className="block space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.resultUnit}</span>
+                <input
+                  value={newMethodResultUnit}
+                  onChange={(event) => setNewMethodResultUnit(event.target.value)}
+                  className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
+                  placeholder="mg/L, mol/L, AU, AU/min, %, ppm..."
+                />
+              </label>
+
               {newMethodType === 'custom-formula' && (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-5">
-                  <label className="block space-y-2">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.resultUnit}</span>
-                    <input
-                      value={newMethodResultUnit}
-                      onChange={(event) => setNewMethodResultUnit(event.target.value)}
-                      className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
-                      placeholder="mg/L, mol/L, AU/min, %, ppm..."
-                    />
-                  </label>
-
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                     <div>
                       <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">{text.formulaBuilder}</p>
                       <p className="text-sm text-white/45 mt-2 leading-relaxed">
-                        Create variables for equipment readings, time sequences and constants, then click them to assemble the formula.
+                        {text.formulaBuilderHint}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -2905,10 +3071,10 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button onClick={createCustomMethod} disabled={newMethodType === 'custom-formula' && !newMethodExpression.trim()} className="w-full sm:w-auto px-8 py-4 rounded-xl bg-primary text-on-primary text-xs font-bold uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(167,200,255,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                   <Plus size={16} />
-                  Add Method
+                  {text.addMethod}
                 </button>
                 <button onClick={closeMethodBuilder} className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white/[0.04] border border-white/10 text-white/55 text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all">
-                  Cancel
+                  {text.cancel}
                 </button>
               </div>
             </section>
@@ -2929,7 +3095,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                     <div>
                       <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-secondary font-bold">{text.workspace}</p>
                       <h2 className="text-2xl font-display font-bold text-white mt-2">{openedProject.compound}</h2>
-                      <p className="text-sm text-white/45 mt-2 max-w-2xl leading-relaxed">{openedProject.description}</p>
+                      <p className="text-sm text-white/45 mt-2 max-w-2xl leading-relaxed">{getLocalizedProjectDescription(openedProject, language)}</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[9px] font-mono uppercase tracking-widest">
@@ -3004,16 +3170,14 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                       <h3 className="text-xl font-display font-bold text-white mt-2">{selectedMethod?.name ?? 'No method selected'}</h3>
                       <p className="text-sm text-white/45 mt-2 break-words">{selectedMethod?.expression ?? 'Create or select a method to start.'}</p>
                     </div>
-                    {selectedMethod?.tab && (
+                    {selectedMethod?.tab && getMethodTargetTab(selectedMethod) !== 'linear-regression' && (
                       <button
                         onClick={openSelectedMethodAdvanced}
                         className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-on-primary text-[10px] font-mono uppercase tracking-widest transition-all"
                       >
-                        {getMethodTargetTab(selectedMethod) === 'linear-regression'
-                          ? 'Open Linear Regression'
-                          : getMethodTargetTab(selectedMethod) === 'scan'
-                            ? SCAN_TEXT[language].open
-                            : 'Advanced'}
+                        {getMethodTargetTab(selectedMethod) === 'scan'
+                          ? SCAN_TEXT[language].open
+                          : 'Advanced'}
                       </button>
                     )}
                   </div>
@@ -3066,19 +3230,6 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                     </div>
                   ) : selectedMethod?.type === 'custom-formula' ? (
                     <div className="space-y-5">
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/35">{text.recognizedVariables}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {customFormulaResult?.variables.length ? customFormulaResult.variables.map((variable) => (
-                            <span key={variable} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest text-primary">
-                              {variable}
-                            </span>
-                          )) : (
-                            <span className="text-sm text-white/35">{text.noRecognizedVariables}</span>
-                          )}
-                        </div>
-                      </div>
-
                       {customFormulaResult?.variables.length ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {customFormulaResult.variables.map((variable) => (
@@ -3099,14 +3250,26 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                         </div>
                       ) : null}
 
+                      <label className="block space-y-2">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.resultUnit}</span>
+                        <input
+                          value={methodInputs.concentrationUnit}
+                          onChange={(event) => updateMethodInput('concentrationUnit', event.target.value)}
+                          onFocus={() => markAnalysisFieldStart('concentrationUnit', methodInputs.concentrationUnit)}
+                          onBlur={(event) => commitAnalysisFieldChange('concentrationUnit', text.resultUnit, event.target.value, 'Project Method', 'Updated project method result unit.')}
+                          className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                          placeholder="mg/L, mol/L, AU, AU/min, %, ppm..."
+                        />
+                      </label>
+
                       <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-5">
                         <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">
-                          Formula Result
+                          {text.formulaResult}
                         </p>
                         <p className="text-3xl font-display font-bold text-white mt-3">
                           {customFormulaResult?.value !== null && customFormulaResult?.value !== undefined ? formatNumber(customFormulaResult.value) : '---'}
-                          {selectedMethod.resultUnit && (
-                            <span className="text-sm font-mono text-white/40 ml-2">{selectedMethod.resultUnit}</span>
+                          {methodInputs.concentrationUnit && (
+                            <span className="text-sm font-mono text-white/40 ml-2">{methodInputs.concentrationUnit}</span>
                           )}
                         </p>
                         {customFormulaResult?.error && (
@@ -3161,17 +3324,6 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                                 placeholder="0.000"
                               />
                             </label>
-                            <label className="block space-y-2">
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.sampleConcentrationUnit}</span>
-                              <input
-                                value={methodInputs.concentrationUnit}
-                                onChange={(event) => updateMethodInput('concentrationUnit', event.target.value)}
-                                onFocus={() => markAnalysisFieldStart('concentrationUnit', methodInputs.concentrationUnit)}
-                                onBlur={(event) => commitAnalysisFieldChange('concentrationUnit', text.sampleConcentrationUnit, event.target.value, 'Project Method', 'Updated project method concentration unit.')}
-                                className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
-                                placeholder="mg/L, mol/L, ppm..."
-                              />
-                            </label>
                           </>
                         )}
 
@@ -3203,6 +3355,20 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                               onBlur={(event) => commitAnalysisFieldChange('transmittance', text.transmittance, event.target.value, 'Project Method', 'Updated project method transmittance.')}
                               className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
                               placeholder="100"
+                            />
+                          </label>
+                        )}
+
+                        {selectedMethod && (
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{text.resultUnit}</span>
+                            <input
+                              value={methodInputs.concentrationUnit}
+                              onChange={(event) => updateMethodInput('concentrationUnit', event.target.value)}
+                              onFocus={() => markAnalysisFieldStart('concentrationUnit', methodInputs.concentrationUnit)}
+                              onBlur={(event) => commitAnalysisFieldChange('concentrationUnit', text.resultUnit, event.target.value, 'Project Method', 'Updated project method result unit.')}
+                              className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40"
+                              placeholder="mg/L, mol/L, AU, AU/min, %, ppm..."
                             />
                           </label>
                         )}
@@ -3303,14 +3469,14 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                             <h3 className="text-white font-semibold leading-tight">{project.compound}</h3>
                             <span className="text-[8px] font-mono text-primary bg-primary/10 border border-primary/20 py-0.5 px-2 rounded-full uppercase tracking-widest">{project.id}</span>
                           </div>
-                          <p className="text-xs text-white/35 mt-2 line-clamp-2">{project.description}</p>
+                          <p className="text-xs text-white/35 mt-2 line-clamp-2">{getLocalizedProjectDescription(project, language)}</p>
                           <div className="flex flex-wrap items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-white/25">
                             <span>{project.matrix}</span>
                             <span className="w-1 h-1 rounded-full bg-white/10" />
                             <span className="text-secondary/70">{project.wavelength}</span>
                             <span className="w-1 h-1 rounded-full bg-white/10" />
-                            <span>{project.inputs.length} inputs</span>
-                            <span>{project.methods.length} methods</span>
+                            <span>{project.inputs.length} {text.inputsCount}</span>
+                            <span>{project.methods.length} {text.methodsCount}</span>
                           </div>
                         </div>
                       </button>
@@ -3327,7 +3493,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-primary font-bold">{text.createProject}</p>
               <h2 className="text-xl font-display font-bold text-white mt-2">{text.newCompound}</h2>
               <p className="text-sm text-white/45 mt-2 leading-relaxed">
-                Register the compound first. Calculation methods can then be configured with readings from the equipment.
+                {text.projectCreationHint}
               </p>
             </div>
 
@@ -3349,7 +3515,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   onChange={(event) => setNewProjectDescription(event.target.value)}
                   rows={3}
                   className="w-full resize-none rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-white outline-none focus:border-primary/40 placeholder:text-white/25"
-                  placeholder="Describe what this project should calculate..."
+                  placeholder={text.projectPurposePlaceholder}
                 />
               </label>
             </div>
@@ -3357,7 +3523,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
             <div className="rounded-2xl bg-secondary/10 border border-secondary/20 p-4">
               <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">{text.defaultMethod}</p>
               <p className="text-xs text-white/55 mt-2 leading-relaxed">
-                New projects start with a rule-of-three template: C sample = A sample x C standard / A standard.
+                {text.defaultMethodHint}
               </p>
             </div>
 
@@ -3417,7 +3583,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                 </button>
                 <button 
                   onClick={isSerialConnected ? disconnectSerial : connectSerial}
-                  title={isSerialConnected ? "Disconnect Equipment" : "Connect Serial Equipment"}
+                  title={isSerialConnected ? text.disconnectEquipment : text.connectEquipment}
                   className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest ${
                     isSerialConnected 
                       ? 'bg-green-500/10 border-green-500/30 text-green-400' 
@@ -3425,7 +3591,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   }`}
                 >
                   {isSerialConnected ? <Unlink size={18} /> : <Link size={18} />}
-                  {isSerialConnected ? 'Online' : 'Hardware'}
+                  {isSerialConnected ? text.online : text.hardware}
                 </button>
               </div>
             </div>
@@ -3448,7 +3614,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                     calcMode === 'concentration' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
                   }`}
                 >
-                  Concentration
+                  {text.concentrationMode}
                 </button>
                 <button
                   onClick={() => {
@@ -3466,7 +3632,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                     calcMode === 'absorbance' ? 'bg-primary text-on-primary shadow-lg' : 'text-white/40 hover:text-white'
                   }`}
                 >
-                  Absorbance
+                  {text.absorbanceMode}
                 </button>
               </div>
 
@@ -3482,7 +3648,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                           : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
                       }`}
                     >
-                      Sample A
+                      {text.sampleReading}
                     </button>
                     <button
                       onClick={() => setLambertSerialTarget('blank')}
@@ -3492,7 +3658,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                           : 'bg-white/[0.03] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
                       }`}
                     >
-                      Blank A
+                      {text.blankReading}
                     </button>
                   </div>
                 </div>
@@ -3541,13 +3707,13 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               <div className="order-2 rounded-2xl bg-[#08101f]/70 border border-white/8 p-4 sm:p-5 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <p className="text-xs font-mono uppercase tracking-widest text-secondary font-bold">Spectral Scan</p>
+                    <p className="text-xs font-mono uppercase tracking-widest text-secondary font-bold">{text.spectralScan}</p>
                     <p className="text-sm text-white/40 mt-1">
-                      {scanPoints.length} readings imported
+                      {scanPoints.length} {text.readingsImported}
                     </p>
                   </div>
                   <span className="text-xs font-mono uppercase tracking-widest text-white/45">
-                    Target: {calcMode === 'concentration' && lambertSerialTarget === 'blank' ? 'Blank A' : 'Sample A'}
+                    {text.target}: {calcMode === 'concentration' && lambertSerialTarget === 'blank' ? text.blankReading : text.sampleReading}
                   </span>
                 </div>
 
@@ -3597,7 +3763,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                         viewBox={`0 0 ${width} ${height}`}
                         className="w-full h-[240px] sm:h-[280px] cursor-crosshair select-none"
                         role="img"
-                        aria-label="Imported spectral scan"
+                        aria-label={text.importedScan}
                         onMouseMove={(event) => {
                           const point = getNearestPoint(event.clientX, event.currentTarget);
                           setHoveredScanWavelength(String(point.wavelength));
@@ -3642,10 +3808,10 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                         <circle cx={activePoint.x} cy={activePoint.y} r="8" fill="rgba(118,243,234,0.16)" />
                         <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#76f3ea" stroke="#e9fffd" strokeWidth="1.4" filter="drop-shadow(0 0 9px rgba(118,243,234,0.8))" />
                         <text x={padding.left + plotWidth / 2} y={height - 6} textAnchor="middle" fontSize="12" fill="rgba(255,255,255,0.55)">
-                          Wavelength (nm)
+                          {text.wavelength} (nm)
                         </text>
                         <text x="16" y={padding.top + plotHeight / 2} textAnchor="middle" fontSize="12" fill="rgba(255,255,255,0.55)" transform={`rotate(-90 16 ${padding.top + plotHeight / 2})`}>
-                          Absorbance (AU)
+                          {text.absorbance} (AU)
                         </text>
                       </svg>
 
@@ -3655,7 +3821,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                           onClick={() => applyLambertScanPoint(activePoint)}
                           className="rounded-xl bg-primary text-on-primary px-3 py-3 font-mono uppercase tracking-[0.18em] font-bold transition-all hover:shadow-[0_0_20px_rgba(167,200,255,0.2)]"
                         >
-                          Use Point
+                          {text.usePoint}
                         </button>
                         <div className="rounded-xl bg-white/[0.03] border border-white/8 px-3 py-3 font-mono text-white/70">
                           <span className="text-white/35">λ</span> {formatScanInputValue(activePoint.wavelength)} nm · <span className="text-white/35">A</span> {formatScanInputValue(activePoint.absorbance)}
@@ -3672,7 +3838,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
             <div className="glass-panel rounded-[2rem] p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-transparent border-primary/10">
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">Calculation Result</p>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-secondary font-bold">{text.calculationResult}</p>
                   <p className="text-4xl font-display font-bold text-white mt-2">
                     {formatNumber(finalResult)} <span className="text-lg text-white/40 font-mono">{calcMode === 'concentration' ? 'mol/L' : 'AU'}</span>
                   </p>
@@ -3696,7 +3862,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                 </div>
                 )}
                 <div className="p-4 rounded-2xl bg-[#08101f]/60 border border-white/5">
-                  <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">Applied Formula</p>
+                    <p className="text-[10px] font-mono uppercase text-white/30 mb-2 tracking-widest">{text.appliedFormula}</p>
                   <p className="text-sm text-white/80 leading-relaxed italic">
                     {calcMode === 'concentration' ? 'c = (A / (epsilon x l)) x DF' : 'A = epsilon x l x (c / DF)'}
                   </p>
@@ -3721,10 +3887,10 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   </div>
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30 font-bold">
-                      Session Report
+                      {text.sessionReport}
                     </p>
                     <h2 className="text-2xl font-display font-bold text-white mt-1">
-                      Technical analysis report
+                      {text.technicalReport}
                     </h2>
                   </div>
                 </div>
@@ -3735,20 +3901,20 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   className="w-full py-4 bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono uppercase tracking-[0.2em] hover:bg-white/[0.08] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
                 >
                   <Download size={16} />
-                  Print PDF Report
+                  {text.printPdfReport}
                 </button>
               </div>
 
               <div className="hidden">
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Applied Formula</p>
+                    <p className="text-white/30 font-mono uppercase tracking-widest">{text.appliedFormula}</p>
                   <p className="text-white mt-2 font-semibold break-words">
                     {calcMode === 'concentration' ? 'c = (A / (epsilon x l)) x DF' : 'A = epsilon x l x (c / DF)'}
                   </p>
                   <p className="text-xs text-white/45 mt-2">Target: {calcMode === 'concentration' ? 'Concentration' : 'Absorbance'}</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Wavelength</p>
+                    <p className="text-white/30 font-mono uppercase tracking-widest">{text.wavelength}</p>
                   <p className="text-white mt-2 font-semibold">{targetWavelength || 'N/A'} nm</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
@@ -3764,7 +3930,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   <p className="text-white mt-2 font-semibold">{formatNumber(dilVal)}x</p>
                 </div>
                 <div className="rounded-2xl bg-white/[0.03] border border-white/8 p-4">
-                  <p className="text-white/30 font-mono uppercase tracking-widest">Calculation Result</p>
+                    <p className="text-white/30 font-mono uppercase tracking-widest">{text.calculationResult}</p>
                   <p className="text-white mt-2 font-semibold">
                     {formatNumber(finalResult)} {calcMode === 'concentration' ? 'mol/L' : 'AU'}
                   </p>
@@ -3772,10 +3938,10 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               </div>
 
               <div className="hidden">
-                <p>--- FINAL REPORT ---</p>
-                <p className="mt-3">Method: Beer-Lambert Law Calculation</p>
+                  <p>--- {text.finalReport.toUpperCase()} ---</p>
+                  <p className="mt-3">{text.beerLambertMethod}</p>
                 <p>Mode: {calcMode === 'concentration' ? 'Quantification' : 'Absorbance Estimation'}</p>
-                <p className="mt-3">Analytical Parameters:</p>
+                  <p className="mt-3">{text.analyticalParameters}</p>
                 <p>  - Epsilon: {formatNumber(epsVal)}</p>
                 <p>  - Path length: {formatNumber(pathVal)}</p>
                 <p>  - Dilution: {formatNumber(dilVal)}</p>
@@ -3785,8 +3951,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
               <div className="flex items-start gap-3 rounded-2xl bg-white/[0.02] border border-white/8 p-4">
                 <FlaskConical size={18} className="text-primary mt-0.5 shrink-0" />
                 <p className="text-sm text-white/55 leading-relaxed">
-                  This calculation assumes a linear relationship between absorbance and concentration. Ensure your 
-                  readings are within the dynamic linear range of your instrument.
+                  {text.linearRangeHint}
                 </p>
               </div>
             </div>
@@ -3947,7 +4112,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                   if (!results) return (
                     <div className="py-6 border-2 border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center">
                       <p className="text-sm font-mono text-white/20 italic">
-                        {activeCount < 5 ? `Min. 5 active points required (${activeCount}/5)` : 'Invalid data'}
+                        {activeCount < 5 ? `${text.minimumCalibrationPoints} (${activeCount}/5)` : text.invalidCalibrationData}
                       </p>
                     </div>
                   );
@@ -4145,7 +4310,7 @@ export default function Methods({ currentUser, globalSearch }: MethodsProps) {
                             />
                           </label>
                           <label className="block space-y-2">
-                            <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Dilution Factor</span>
+                              <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">{text.dilutionFactor}</span>
                             <input
                               type="number"
                               step="any"

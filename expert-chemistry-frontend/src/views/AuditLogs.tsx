@@ -642,30 +642,6 @@ export default function AuditLogs({ globalSearch }: AuditLogsProps) {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl bg-white/[0.02] border border-white/8 p-4">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 rounded-xl bg-secondary/10 text-secondary border border-secondary/20">
-                          <ShieldCheck size={16} />
-                        </div>
-                        <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-white/35">{text.process}</p>
-                      </div>
-                      <div className="space-y-3">
-                        {group.logs.map((log, index) => {
-                          const previousValue = getMetadataText(log, 'previousValue') || '-';
-                          const nextValue = getMetadataText(log, 'nextValue') || '-';
-
-                          return (
-                            <div key={log.id} className="rounded-xl bg-[#08101f]/70 border border-white/5 p-3 text-sm">
-                              <p className="text-white/35 font-mono uppercase tracking-widest">
-                                {text.step} {index + 1} • {new Date(log.createdAt).toLocaleString('pt-BR')}
-                              </p>
-                              <p className="text-white mt-2">{getAuditSentence(log, language)}</p>
-                              <p className="text-white/40 mt-2 text-xs">{text.from} {previousValue} {text.to} {nextValue}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </article>
                 );
               }
