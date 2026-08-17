@@ -119,7 +119,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
   };
 
   return (
-    <div className="min-h-screen bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
+    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-clip bg-[#0b1121] text-white selection:bg-primary/30 lab-grid">
       {/* Background Decorative Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/10 blur-[140px] opacity-60" />
@@ -267,7 +267,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
       <div
         className={`transition-all duration-500 ease-in-out ${
           isSidebarOpen ? 'lg:pl-72' : 'lg:pl-20'
-        } pl-0`}
+        } min-w-0 max-w-full pl-0`}
       >
         {/* Top Bar */}
         <header className="glass-panel border border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-4 sticky top-3 sm:top-4 z-40 mx-3 sm:mx-4 lg:mx-6 mt-3 sm:mt-6 rounded-2xl shadow-2xl">
@@ -424,7 +424,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
         </header>
 
         {/* Content */}
-        <main className="px-3 sm:px-4 lg:px-10 py-6 sm:py-8 lg:py-10 min-h-[calc(100vh-120px)] relative z-10">
+        <main className="mobile-safe-gutters min-w-0 max-w-full px-3 sm:px-4 lg:px-10 py-6 sm:py-8 lg:py-10 min-h-[calc(100vh-120px)] relative z-10">
           <AnimatePresence mode="wait">
             <motion.div
               key={contentKey}
@@ -432,7 +432,7 @@ export default function Layout({ children, activeView, contentKey, onViewChange,
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="max-w-7xl mx-auto"
+              className="w-full min-w-0 max-w-7xl mx-auto"
             >
               {children}
             </motion.div>
