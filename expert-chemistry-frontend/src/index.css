@@ -31,7 +31,27 @@
 }
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+  }
+
+  html,
   body {
+    overflow-x: clip;
+  }
+
+  body {
+    margin: 0;
     @apply bg-[#0b1121] text-[#e2e8f0] font-sans antialiased selection:bg-primary/20 selection:text-primary;
   }
 
@@ -84,10 +104,19 @@
 
 .glass-panel {
   background: rgba(22, 29, 47, 0.6);
+  background-clip: padding-box;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  isolation: isolate;
+}
+
+/* Prevents WebKit from painting the backdrop outside rounded card edges. */
+@supports (-webkit-touch-callout: none) {
+  .glass-panel {
+    -webkit-mask-image: -webkit-radial-gradient(white, black);
+  }
 }
 
 .glass-panel-hover {
@@ -136,6 +165,13 @@
   background: rgba(118, 243, 234, 0.68);
   border: 2px solid transparent;
   background-clip: padding-box;
+}
+
+@media (max-width: 639px) {
+  .mobile-safe-gutters {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+  }
 }
 
 @keyframes dashboard-report-float {
